@@ -14,7 +14,6 @@ TOKEN = os.getenv('DISCORD_TOKEN')
 BRIX_KEY = os.getenv('BRIX_KEY')
 API_URL = os.getenv('API_URL', "https://marauder.host")
 BRIX_API_URL = os.getenv('BRIX_API_URL', "https://api.brixhub.to/api/v1")
-AUTO_WAYS_KEY = os.getenv('AUTO_WAYS_KEY')
 
 TICKET_CHANNEL_ID = int(os.getenv('TICKET_CHANNEL_ID', 0))
 RULES_CHANNEL_ID = int(os.getenv('RULES_CHANNEL_ID', 0))
@@ -80,7 +79,7 @@ def use_search(uid):
     bot_stats["total_users"].add(uid)
 
 # ============================================
-# API BRIX (RECHERCHE OSINT)
+# API BRIX
 # ============================================
 
 async def brix_search(payload):
@@ -105,150 +104,6 @@ async def brix_lookup(value):
     async with aiohttp.ClientSession() as session:
         async with session.get(f"{BRIX_API_URL}/lookup/{path}", headers=headers, timeout=15) as r:
             return r.status, await r.json()
-
-# ============================================
-# API AUTO WAYS NETWORK (PLAQUE)
-# ============================================
-
-async def get_car_info(plate):
-    """Récupère les infos d'un véhicule via Auto Ways Network"""
-    url = f"https://app.auto-ways.net/api/v1/fr?plate={plate}"
-    headers = {
-        "Authorization": f"Bearer {AUTO_WAYS_KEY}",
-        "Accept": "application/json"
-    }
-    async with aiohttp.ClientSession() as session:
-        async with session.get(url, headers=headers, timeout=15) as r:
-            return r.status, await r.json()
-
-def format_car_embed(data, plate):
-    """Crée un embed avec les infos du véhicule selon la documentation"""
-    
-    # Récupérer les infos principales
-    marque = data.get('AWN_marque', '?')
-    modele = data.get('AWN_modele', '?')
-    version = data.get('AWN_version', '')
-    immat = data.get('AWN_immat', plate)
-    
-    # Titre
-    title = f"🚗 {marque} {modele}"
-    if version:
-        title += f" {version}"
-    
-    embed = discord.Embed(
-        title=title,
-        description=f"**Plaque :** {immat}",
-        color=PANEL_COLOR,
-        timestamp=datetime.utcnow()
-    )
-    
-    # Image de la marque
-    marque_image = data.get('AWN_marque_image')
-    if marque_image:
-        embed.set_thumbnail(url=marque_image)
-    else:
-        embed.set_thumbnail(url=LOGO_URL)
-    
-    # ============================================
-    # 1. IDENTIFICATION DU VÉHICULE
-    # ============================================
-    embed.add_field(
-        name="📋 Identification",
-        value=(
-            f"**Marque :** {data.get('AWN_marque', 'N/A')}\n"
-            f"**Modèle :** {data.get('AWN_modele', 'N/A')}\n"
-            f"**Version :** {data.get('AWN_version', 'N/A')}\n"
-            f"**Carrosserie :** {data.get('AWN_carrosserie', 'N/A')}\n"
-            f"**Genre :** {data.get('AWN_genre_label', 'N/A')}"
-        ),
-        inline=False
-    )
-    
-    # ============================================
-    # 2. CARACTÉRISTIQUES TECHNIQUES
-    # ============================================
-    embed.add_field(
-        name="🔧 Caractéristiques techniques",
-        value=(
-            f"**Année :** {data.get('AWN_annee_de_debut_modele', 'N/A')}\n"
-            f"**Puissance :** {data.get('AWN_puissance_chevaux', '?')} ch\n"
-            f"**Puissance fiscale :** {data.get('AWN_puissance_fiscale', '?')} CV\n"
-            f"**Cylindrée :** {data.get('AWN_cylindre_capacite', '?')} cm³\n"
-            f"**Carburant :** {data.get('AWN_energie', 'N/A')}\n"
-            f"**Boîte :** {data.get('AWN_type_boite_vites', 'N/A')}\n"
-            f"**Couleur :** {data.get('AWN_couleur', 'N/A')}\n"
-            f"**Places :** {data.get('AWN_nbr_de_places', '?')}"
-        ),
-        inline=True
-    )
-    
-    # ============================================
-    # 3. POIDS ET DIMENSIONS
-    # ============================================
-    embed.add_field(
-        name="📐 Poids & Dimensions",
-        value=(
-            f"**Longueur :** {data.get('AWN_longueur', '?')} cm\n"
-            f"**Largeur :** {data.get('AWN_largeur', '?')} cm\n"
-            f"**Hauteur :** {data.get('AWN_hauteur', '?')} cm\n"
-            f"**Empattement :** {data.get('AWN_empattement', '?')} cm\n"
-            f"**PTAC :** {data.get('AWN_PTAC', '?')} kg\n"
-            f"**PTRA :** {data.get('AWN_PTRA', '?')} kg"
-        ),
-        inline=True
-    )
-    
-    # ============================================
-    # 4. ENVIRONNEMENT
-    # ============================================
-    embed.add_field(
-        name="🌍 Environnement",
-        value=(
-            f"**CO₂ :** {data.get('AWN_emission_co_2', '?')} g/km\n"
-            f"**Norme Euro :** {data.get('AWN_env_class', 'N/A')}\n"
-            f"**AdBlue :** {data.get('AWN_ad_blue', 'N/A')}\n"
-            f"**Consommation urbaine :** {data.get('AWN_consommation_urbaine', '?')} L/100km\n"
-            f"**Consommation mixte :** {data.get('AWN_consommation_mixte', '?')} L/100km"
-        ),
-        inline=True
-    )
-    
-    # ============================================
-    # 5. PNEUS
-    # ============================================
-    pneus = data.get('AWN_pneus', [])
-    if pneus:
-        pneu_text = ""
-        for p in pneus[:3]:  # Max 3 pneus
-            pneu_text += f"• {p.get('label', 'N/A')}\n"
-        if len(pneus) > 3:
-            pneu_text += f"... et {len(pneus) - 3} autres"
-        embed.add_field(name="🔘 Pneus compatibles", value=pneu_text or "N/A", inline=False)
-    
-    # ============================================
-    # 6. IDENTIFIANTS
-    # ============================================
-    embed.add_field(
-        name="🔑 Identifiants",
-        value=(
-            f"**VIN :** {data.get('AWN_VIN', 'N/A')}\n"
-            f"**K-Type :** {data.get('AWN_k_type', 'N/A')}\n"
-            f"**Code moteur :** {data.get('AWN_code_moteur', 'N/A')}\n"
-            f"**KBA :** {data.get('AWN_KBA', 'N/A')}"
-        ),
-        inline=False
-    )
-    
-    # ============================================
-    # 7. FOOTER
-    # ============================================
-    date_cg = data.get('AWN_date_cg', '')
-    if date_cg:
-        embed.set_footer(text=f"Auto Ways Network · Carte grise du {date_cg}")
-    else:
-        embed.set_footer(text="Auto Ways Network · Données SIV")
-    
-    return embed
 
 # ============================================
 # FORMATAGE
@@ -363,7 +218,7 @@ class ResultsView(View):
         )
 
 # ============================================
-# MODALS (RECHERCHE)
+# MODALS
 # ============================================
 
 class SearchModal(Modal, title="🔍 Recherche Marauder"):
@@ -448,82 +303,6 @@ class LookupModal(Modal, title="⚡ Lookup rapide"):
         await interaction.followup.send(embed=view.current_embed(), view=view, ephemeral=True)
 
 # ============================================
-# MODAL PLAQUE (RECHERCHE PAR IMMATRICULATION)
-# ============================================
-
-class PlaqueModal(Modal, title="🚗 Recherche par plaque"):
-    plaque = TextInput(
-        label="Numéro de plaque",
-        placeholder="AB-123-CD ou FH034DD",
-        required=True,
-        max_length=15
-    )
-
-    async def on_submit(self, interaction: discord.Interaction):
-        await interaction.response.defer(ephemeral=True)
-        
-        plate = str(self.plaque).strip().upper().replace(" ", "").replace("-", "")
-        
-        if not AUTO_WAYS_KEY:
-            return await interaction.followup.send(
-                embed=discord.Embed(title="❌ Clé API Auto Ways manquante", color=0xef4444),
-                ephemeral=True
-            )
-        
-        loading = await interaction.followup.send(
-            embed=discord.Embed(title="⏳ Recherche du véhicule...", color=PANEL_COLOR),
-            ephemeral=True
-        )
-        
-        status, data = await get_car_info(plate)
-        
-        if status == 404:
-            return await loading.edit(
-                embed=discord.Embed(
-                    title=f"❌ Aucun véhicule trouvé",
-                    description=f"Plaque **{plate}** non trouvée dans la base SIV.",
-                    color=0xef4444
-                )
-            )
-        elif status == 401 or status == 403:
-            return await loading.edit(
-                embed=discord.Embed(
-                    title="❌ Clé API invalide ou accès refusé",
-                    description="Vérifie ta clé Auto Ways Network et ton abonnement.",
-                    color=0xef4444
-                )
-            )
-        elif status == 429:
-            return await loading.edit(
-                embed=discord.Embed(
-                    title="⏳ Trop de requêtes",
-                    description="Limite de l'API atteinte. Réessaie dans quelques minutes.",
-                    color=0xf59e0b
-                )
-            )
-        elif status != 200:
-            error_text = await r.text() if 'r' in locals() else "Erreur inconnue"
-            return await loading.edit(
-                embed=discord.Embed(
-                    title=f"❌ Erreur {status}",
-                    description=f"Une erreur est survenue.\n\n```{error_text[:200]}```",
-                    color=0xef4444
-                )
-            )
-        
-        if not data:
-            return await loading.edit(
-                embed=discord.Embed(
-                    title="❌ Données vides",
-                    description="Aucune donnée reçue pour cette plaque.",
-                    color=0xef4444
-                )
-            )
-        
-        embed = format_car_embed(data, plate)
-        await loading.edit(embed=embed, view=None)
-
-# ============================================
 # MAIN VIEW (PANEL)
 # ============================================
 
@@ -544,10 +323,6 @@ class MainView(View):
     @discord.ui.button(label="⚡ Lookup rapide", style=discord.ButtonStyle.secondary, row=0, custom_id="main_lookup")
     async def lookup(self, interaction, button):
         await interaction.response.send_modal(LookupModal())
-
-    @discord.ui.button(label="🚗 Plaque", style=discord.ButtonStyle.success, row=0, custom_id="main_plaque")
-    async def plaque(self, interaction, button):
-        await interaction.response.send_modal(PlaqueModal())
 
 # ============================================
 # MODAL TICKET
@@ -746,8 +521,7 @@ async def panel(interaction):
         title="**Marauder Lookup**",
         description=(
             "🔍 **Recherche OSINT**\n"
-            "⚡ **Lookup rapide**\n"
-            "🚗 **Recherche par plaque**\n\n"
+            "⚡ **Lookup rapide**\n\n"
             "💬 **Rejoins notre Discord :** [Clique ici](https://discord.gg/jf6QRZHaTB)"
         ),
         color=PANEL_COLOR
@@ -842,73 +616,75 @@ async def remove_from_ticket(interaction, membre: discord.Member):
     await interaction.response.send_message(f"✅ {membre.mention} retiré du ticket.")
 
 # ============================================
-# COMMANDE /PLAQUE (SLASH)
+# COMMANDE /VIN (RECHERCHE PAR VIN)
 # ============================================
 
-@bot.tree.command(name="plaque", description="🚗 Rechercher un véhicule par plaque d'immatriculation")
-async def plaque_slash(interaction: discord.Interaction, numero: str):
-    """Recherche directe par plaque"""
+@bot.tree.command(name="vin", description="🔍 Rechercher un véhicule par VIN")
+async def vin_search(interaction: discord.Interaction, numero: str):
     await interaction.response.defer(ephemeral=True)
     
-    plate = numero.strip().upper().replace(" ", "").replace("-", "")
+    vin = numero.strip().toUpperCase()
     
-    if not AUTO_WAYS_KEY:
+    if not vin:
         return await interaction.followup.send(
-            embed=discord.Embed(title="❌ Clé API Auto Ways manquante", color=0xef4444),
+            embed=discord.Embed(title="❌ VIN requis", color=0xef4444),
             ephemeral=True
         )
     
-    loading = await interaction.followup.send(
-        embed=discord.Embed(title="⏳ Recherche du véhicule...", color=PANEL_COLOR),
-        ephemeral=True
-    )
-    
-    status, data = await get_car_info(plate)
-    
-    if status == 404:
-        return await loading.edit(
+    try:
+        # API VIN gratuite (NHTSA)
+        url = f"https://vpic.nhtsa.dot.gov/api/vehicles/decodevinvalues/{vin}?format=json"
+        
+        async with aiohttp.ClientSession() as session:
+            async with session.get(url, timeout=15) as r:
+                if r.status == 200:
+                    data = await r.json()
+                    results = data.get("Results", [])
+                    
+                    if results and len(results) > 0:
+                        result = results[0]
+                        
+                        embed = discord.Embed(
+                            title=f"🚗 Résultats VIN : {vin}",
+                            color=PANEL_COLOR,
+                            timestamp=datetime.utcnow()
+                        )
+                        embed.set_thumbnail(url=LOGO_URL)
+                        
+                        embed.add_field(name="Marque", value=result.get("Make", "N/A"), inline=True)
+                        embed.add_field(name="Modèle", value=result.get("Model", "N/A"), inline=True)
+                        embed.add_field(name="Année", value=result.get("ModelYear", "N/A"), inline=True)
+                        embed.add_field(name="Type de véhicule", value=result.get("VehicleType", "N/A"), inline=True)
+                        embed.add_field(name="Pays", value=result.get("PlantCountry", "N/A"), inline=True)
+                        embed.add_field(name="Cylindrée", value=result.get("EngineCylinders", "N/A"), inline=True)
+                        
+                        embed.set_footer(text="NHTSA · Données VIN")
+                        await interaction.followup.send(embed=embed)
+                    else:
+                        await interaction.followup.send(
+                            embed=discord.Embed(
+                                title="❌ Aucun véhicule trouvé",
+                                description=f"VIN **{vin}** non trouvé.",
+                                color=0xef4444
+                            )
+                        )
+                else:
+                    await interaction.followup.send(
+                        embed=discord.Embed(
+                            title=f"❌ Erreur {r.status}",
+                            description="Réessaie plus tard.",
+                            color=0xef4444
+                        )
+                    )
+                    
+    except Exception as e:
+        await interaction.followup.send(
             embed=discord.Embed(
-                title=f"❌ Aucun véhicule trouvé",
-                description=f"Plaque **{plate}** non trouvée.",
+                title="❌ Erreur",
+                description=str(e),
                 color=0xef4444
             )
         )
-    elif status == 401 or status == 403:
-        return await loading.edit(
-            embed=discord.Embed(
-                title="❌ Clé API invalide ou accès refusé",
-                description="Vérifie ta clé Auto Ways Network.",
-                color=0xef4444
-            )
-        )
-    elif status == 429:
-        return await loading.edit(
-            embed=discord.Embed(
-                title="⏳ Trop de requêtes",
-                description="Limite de l'API atteinte. Réessaie dans quelques minutes.",
-                color=0xf59e0b
-            )
-        )
-    elif status != 200:
-        return await loading.edit(
-            embed=discord.Embed(
-                title=f"❌ Erreur {status}",
-                description="Réessaie plus tard.",
-                color=0xef4444
-            )
-        )
-    
-    if not data:
-        return await loading.edit(
-            embed=discord.Embed(
-                title="❌ Données vides",
-                description="Aucune donnée reçue pour cette plaque.",
-                color=0xef4444
-            )
-        )
-    
-    embed = format_car_embed(data, plate)
-    await loading.edit(embed=embed, view=None)
 
 # ============================================
 # ÉVÉNEMENTS
@@ -931,7 +707,6 @@ async def on_ready():
     print(f"✅ Rôle Staff: {STAFF_ROLE_ID}")
     print(f"✅ Rôle Owner: {OWNER_ROLE_ID}")
     print(f"✅ Rôle Membre: {MEMBER_ROLE_ID}")
-    print(f"✅ Auto Ways: {'✅ OK' if AUTO_WAYS_KEY else '❌ MANQUANT'}")
 
 # ============================================
 # LANCEMENT
