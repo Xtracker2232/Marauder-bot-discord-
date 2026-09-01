@@ -160,7 +160,7 @@ def results_to_txt(results, query_info=""):
     return "\n".join(lines)
 
 # ============================================
-# VIEW RÉSULTATS
+# VIEW RÉSULTATS (AVEC custom_id)
 # ============================================
 
 class ResultsView(View):
@@ -173,8 +173,16 @@ class ResultsView(View):
         self.index = 0
         self.loading_message = loading_message
         
-        self.add_item(Button(label="🌐 Site Web", style=discord.ButtonStyle.link, url=API_URL))
-        self.add_item(Button(label="💬 Discord", style=discord.ButtonStyle.link, url="https://discord.gg/jf6QRZHaTB"))
+        self.add_item(Button(
+            label="🌐 Site Web",
+            style=discord.ButtonStyle.link,
+            url=API_URL
+        ))
+        self.add_item(Button(
+            label="💬 Discord",
+            style=discord.ButtonStyle.link,
+            url="https://discord.gg/jf6QRZHaTB"
+        ))
         self._update_buttons()
 
     def _update_buttons(self):
@@ -185,29 +193,29 @@ class ResultsView(View):
     def current_embed(self):
         return format_profile(self.results[self.index], self.index, len(self.results))
 
-    @discord.ui.button(label="◀", style=discord.ButtonStyle.secondary)
+    @discord.ui.button(label="◀", style=discord.ButtonStyle.secondary, custom_id="prev_btn")
     async def prev_btn(self, interaction, button):
         self.index -= 1
         self._update_buttons()
         await interaction.response.edit_message(embed=self.current_embed(), view=self)
 
-    @discord.ui.button(label="1 / 1", style=discord.ButtonStyle.secondary, disabled=True)
+    @discord.ui.button(label="1 / 1", style=discord.ButtonStyle.secondary, disabled=True, custom_id="counter_btn")
     async def counter_btn(self, interaction, button):
         pass
 
-    @discord.ui.button(label="▶", style=discord.ButtonStyle.primary)
+    @discord.ui.button(label="▶", style=discord.ButtonStyle.primary, custom_id="next_btn")
     async def next_btn(self, interaction, button):
         self.index += 1
         self._update_buttons()
         await interaction.response.edit_message(embed=self.current_embed(), view=self)
 
-    @discord.ui.button(label="📥 Télécharger .txt", style=discord.ButtonStyle.success)
+    @discord.ui.button(label="📥 Télécharger .txt", style=discord.ButtonStyle.success, custom_id="download_btn")
     async def download_btn(self, interaction, button):
         txt = results_to_txt(self.results, self.query_info)
         f = discord.File(io.BytesIO(txt.encode("utf-8")), filename="marauder_resultats.txt")
         await interaction.response.send_message(content="📥 Voici vos résultats :", file=f, ephemeral=True)
 
-    @discord.ui.button(label="❌ Fermer", style=discord.ButtonStyle.danger)
+    @discord.ui.button(label="❌ Fermer", style=discord.ButtonStyle.danger, custom_id="close_btn")
     async def close_btn(self, interaction, button):
         await interaction.response.edit_message(
             embed=discord.Embed(title="✅ Résultats fermés", color=0x22c55e),
@@ -310,7 +318,7 @@ class LookupModal(Modal, title="⚡ Lookup rapide"):
         await interaction.followup.send(embed=view.current_embed(), view=view, ephemeral=True)
 
 # ============================================
-# MAIN VIEW (PANEL)
+# MAIN VIEW (PERSISTANTE AVEC timeout=None)
 # ============================================
 
 class MainView(View):
@@ -329,11 +337,11 @@ class MainView(View):
             row=1
         ))
 
-    @discord.ui.button(label="🔍 Rechercher", style=discord.ButtonStyle.primary, row=0)
+    @discord.ui.button(label="🔍 Rechercher", style=discord.ButtonStyle.primary, row=0, custom_id="main_search")
     async def search(self, interaction, button):
         await interaction.response.send_modal(SearchModal())
 
-    @discord.ui.button(label="⚡ Lookup rapide", style=discord.ButtonStyle.secondary, row=0)
+    @discord.ui.button(label="⚡ Lookup rapide", style=discord.ButtonStyle.secondary, row=0, custom_id="main_lookup")
     async def lookup(self, interaction, button):
         await interaction.response.send_modal(LookupModal())
 
@@ -399,16 +407,19 @@ class TicketModal(Modal, title="🎫 Nouveau ticket"):
         )
 
 # ============================================
-# TICKET VIEW
+# TICKET VIEW (PERSISTANTE)
 # ============================================
 
 class TicketView(View):
-    @discord.ui.button(label="🎫 Ouvrir un ticket", style=discord.ButtonStyle.primary)
+    def __init__(self):
+        super().__init__(timeout=None)
+
+    @discord.ui.button(label="🎫 Ouvrir un ticket", style=discord.ButtonStyle.primary, custom_id="open_ticket")
     async def open_ticket(self, interaction: discord.Interaction, button: Button):
         await interaction.response.send_modal(TicketModal())
 
 # ============================================
-# CLOSE TICKET VIEW
+# CLOSE TICKET VIEW (PERSISTANTE)
 # ============================================
 
 class CloseTicketView(View):
@@ -442,11 +453,14 @@ class CloseTicketView(View):
         await interaction.channel.delete()
 
 # ============================================
-# RÈGLEMENT
+# RÈGLEMENT (PERSISTANTE)
 # ============================================
 
 class RulesView(View):
-    @discord.ui.button(label="✅ J'accepte le règlement", style=discord.ButtonStyle.success)
+    def __init__(self):
+        super().__init__(timeout=None)
+
+    @discord.ui.button(label="✅ J'accepte le règlement", style=discord.ButtonStyle.success, custom_id="accept_rules")
     async def accept_rules(self, interaction, button):
         role = interaction.guild.get_role(MEMBER_ROLE_ID)
         if not role:
@@ -458,13 +472,13 @@ class RulesView(View):
         
         embed = discord.Embed(
             title="✅ Règlement accepté !",
-            description=f"Bienvenue sur Marauder ! 🚀",
+            description="Bienvenue sur Marauder ! 🚀",
             color=0x22c55e
         )
         await interaction.response.send_message(embed=embed, ephemeral=True)
 
 # ============================================
-# COMMANDE /STATS (Owner)
+# COMMANDE /STATS
 # ============================================
 
 @bot.tree.command(name="stats", description="📊 Voir les statistiques (Owner)")
@@ -501,7 +515,7 @@ async def stats(interaction: discord.Interaction):
     await interaction.response.send_message(embed=embed)
 
 # ============================================
-# COMMANDE /RESET (Owner)
+# COMMANDE /RESET
 # ============================================
 
 @bot.tree.command(name="reset", description="🔄 Réinitialiser les stats quotidiennes (Owner)")
@@ -624,8 +638,12 @@ async def remove_from_ticket(interaction, membre: discord.Member):
 
 @bot.event
 async def on_ready():
-    for view in [MainView(), TicketView(), CloseTicketView(), RulesView()]:
-        bot.add_view(view)
+    # Ajouter toutes les views persistantes
+    bot.add_view(MainView())
+    bot.add_view(TicketView())
+    bot.add_view(CloseTicketView())
+    bot.add_view(RulesView())
+    
     await bot.tree.sync()
     await bot.change_presence(
         activity=discord.Activity(type=discord.ActivityType.playing, name="/panel | Marauder")
