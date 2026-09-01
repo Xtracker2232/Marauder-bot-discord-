@@ -15,25 +15,16 @@ BRIX_KEY = os.getenv('BRIX_KEY')
 API_URL = os.getenv('API_URL', "https://marauder.host")
 BRIX_API_URL = os.getenv('BRIX_API_URL', "https://api.brixhub.to/api/v1")
 
-# ID DES SALONS ET RÔLES (DEPUIS RAILWAY)
-TICKET_CHANNEL_ID = int(os.getenv('TICKET_CHANNEL_ID', 1544288399781797930))
-RULES_CHANNEL_ID = int(os.getenv('RULES_CHANNEL_ID', 1544282830039810168))
-STAFF_ROLE_ID = int(os.getenv('STAFF_ROLE_ID', 1544289961942065172))
-OWNER_ROLE_ID = int(os.getenv('OWNER_ROLE_ID', 1544301570588672042))
-MEMBER_ROLE_ID = int(os.getenv('MEMBER_ROLE_ID', 1544282221916065792))
+TICKET_CHANNEL_ID = int(os.getenv('TICKET_CHANNEL_ID', 0))
+RULES_CHANNEL_ID = int(os.getenv('RULES_CHANNEL_ID', 0))
+STAFF_ROLE_ID = int(os.getenv('STAFF_ROLE_ID', 0))
+OWNER_ROLE_ID = int(os.getenv('OWNER_ROLE_ID', 0))
+MEMBER_ROLE_ID = int(os.getenv('MEMBER_ROLE_ID', 0))
 
-# VÉRIFICATION DES VARIABLES OBLIGATOIRES
 if not TOKEN:
-    raise ValueError("❌ DISCORD_TOKEN non défini ! Ajoute-le dans les variables Railway.")
+    raise ValueError("❌ DISCORD_TOKEN non défini !")
 if not BRIX_KEY:
-    raise ValueError("❌ BRIX_KEY non défini ! Ajoute-la dans les variables Railway.")
-
-# ============================================
-# CONFIGURATION
-# ============================================
-MAX_RESULTS = 10
-PANEL_COLOR = 0x6366f1
-LOGO_URL = "https://cdn.discordapp.com/attachments/1477415267452719208/1543881553220997240/favicon-32x32.png?ex=6a967b3e&is=6a9529be&hm=73725b0a8477c3d60cad60b87ea9d91bfbb90672f606b199b78e5e797d1cdb7b&"
+    raise ValueError("❌ BRIX_KEY non défini !")
 
 # ============================================
 # INTENTS
@@ -43,54 +34,45 @@ intents.message_content = True
 bot = commands.Bot(command_prefix="!", intents=intents)
 
 # ============================================
+# CONFIGURATION
+# ============================================
+MAX_RESULTS = 10
+PANEL_COLOR = 0x6366f1
+LOGO_URL = "https://cdn.discordapp.com/attachments/1477415267452719208/1543881553220997240/favicon-32x32.png"
+
+# ============================================
 # STATS
 # ============================================
 bot_stats = {"searches": 0, "users": set()}
 
 # ============================================
-# FONCTIONS DE VÉRIFICATION DES RÔLES
+# VÉRIFICATION DES RÔLES
 # ============================================
 
-def has_owner_role(interaction: discord.Interaction) -> bool:
+def has_owner_role(interaction):
     if not interaction.guild:
         return False
     role = interaction.guild.get_role(OWNER_ROLE_ID)
-    if not role:
-        return False
-    return role in interaction.user.roles
+    return role and role in interaction.user.roles
 
-def has_staff_role(interaction: discord.Interaction) -> bool:
+def has_staff_role(interaction):
     if not interaction.guild:
         return False
     role = interaction.guild.get_role(STAFF_ROLE_ID)
-    if not role:
-        return False
-    return role in interaction.user.roles
+    return role and role in interaction.user.roles
 
-def has_permission(interaction: discord.Interaction) -> bool:
+def has_permission(interaction):
     return has_staff_role(interaction) or has_owner_role(interaction)
 
-def is_ticket_channel(channel) -> bool:
+def is_ticket_channel(channel):
     return channel.name.startswith("ticket-")
-
-# ============================================
-# FONCTIONS UTILITAIRES
-# ============================================
-
-def use_search(uid):
-    bot_stats["searches"] += 1
-    bot_stats["users"].add(uid)
 
 # ============================================
 # API BRIX
 # ============================================
 
 async def brix_search(payload):
-    headers = {
-        "X-API-Key": BRIX_KEY,
-        "Content-Type": "application/json",
-        "User-Agent": "Marauder-Bot/1.0"
-    }
+    headers = {"X-API-Key": BRIX_KEY, "Content-Type": "application/json", "User-Agent": "Marauder-Bot/1.0"}
     url = f"{BRIX_API_URL}/search"
     async with aiohttp.ClientSession() as session:
         async with session.post(url, json=payload, headers=headers, timeout=15) as r:
@@ -137,11 +119,7 @@ def format_profile(p, index, total):
         if v and str(v).strip() and str(v) != "undefined":
             lines.append(f"**{label}** : {v}")
     sources = " · ".join(p.get("_sources", [])) or "—"
-    e = discord.Embed(
-        title=f"👤 {name}",
-        description="\n".join(lines) or "Aucune donnée disponible",
-        color=PANEL_COLOR
-    )
+    e = discord.Embed(title=f"👤 {name}", description="\n".join(lines) or "Aucune donnée disponible", color=PANEL_COLOR)
     e.add_field(name="📂 Sources", value=sources, inline=False)
     e.set_footer(text=f"Fiche {index + 1} / {total} · Marauder Lookup")
     return e
@@ -176,12 +154,7 @@ class ResultsView(View):
         self.index = 0
         self.loading_message = loading_message
         
-        self.add_item(Button(
-            label="🌐 Site Web",
-            style=discord.ButtonStyle.link,
-            url=API_URL
-        ))
-        
+        self.add_item(Button(label="🌐 Site Web", style=discord.ButtonStyle.link, url=API_URL))
         self._update_buttons()
 
     def _update_buttons(self):
@@ -192,45 +165,38 @@ class ResultsView(View):
     def current_embed(self):
         return format_profile(self.results[self.index], self.index, len(self.results))
 
-    @discord.ui.button(label="◀", style=discord.ButtonStyle.secondary, custom_id="prev_btn")
-    async def prev_btn(self, interaction: discord.Interaction, button: Button):
+    @discord.ui.button(label="◀", style=discord.ButtonStyle.secondary)
+    async def prev_btn(self, interaction, button):
         self.index -= 1
         self._update_buttons()
         await interaction.response.edit_message(embed=self.current_embed(), view=self)
 
-    @discord.ui.button(label="1 / 1", style=discord.ButtonStyle.secondary, disabled=True, custom_id="counter_btn")
-    async def counter_btn(self, interaction: discord.Interaction, button: Button):
+    @discord.ui.button(label="1 / 1", style=discord.ButtonStyle.secondary, disabled=True)
+    async def counter_btn(self, interaction, button):
         pass
 
-    @discord.ui.button(label="▶", style=discord.ButtonStyle.primary, custom_id="next_btn")
-    async def next_btn(self, interaction: discord.Interaction, button: Button):
+    @discord.ui.button(label="▶", style=discord.ButtonStyle.primary)
+    async def next_btn(self, interaction, button):
         self.index += 1
         self._update_buttons()
         await interaction.response.edit_message(embed=self.current_embed(), view=self)
 
-    @discord.ui.button(label="📥 Télécharger .txt", style=discord.ButtonStyle.success, custom_id="download_btn")
-    async def download_btn(self, interaction: discord.Interaction, button: Button):
+    @discord.ui.button(label="📥 Télécharger .txt", style=discord.ButtonStyle.success)
+    async def download_btn(self, interaction, button):
         txt = results_to_txt(self.results, self.query_info)
         f = discord.File(io.BytesIO(txt.encode("utf-8")), filename="marauder_resultats.txt")
-        await interaction.response.send_message(
-            content="📥 Voici vos résultats en `.txt` :",
-            file=f,
-            ephemeral=True
-        )
+        await interaction.response.send_message(content="📥 Voici vos résultats :", file=f, ephemeral=True)
 
-    @discord.ui.button(label="❌ Fermer", style=discord.ButtonStyle.danger, custom_id="close_btn")
-    async def close_btn(self, interaction: discord.Interaction, button: Button):
-        await interaction.response.edit_message(
-            embed=discord.Embed(title="✅ Résultats fermés", color=0x22c55e),
-            view=None
-        )
+    @discord.ui.button(label="❌ Fermer", style=discord.ButtonStyle.danger)
+    async def close_btn(self, interaction, button):
+        await interaction.response.edit_message(embed=discord.Embed(title="✅ Résultats fermés", color=0x22c55e), view=None)
 
 # ============================================
 # MODALS
 # ============================================
 
 class SearchModal(Modal, title="🔍 Recherche Marauder"):
-    nom = TextInput(label="Nom de famille", placeholder="Dupont", required=False)
+    nom = TextInput(label="Nom", placeholder="Dupont", required=False)
     prenom = TextInput(label="Prénom", placeholder="Jean", required=False)
     email = TextInput(label="Email", placeholder="jean@gmail.com", required=False)
     telephone = TextInput(label="Téléphone", placeholder="0612345678", required=False)
@@ -238,8 +204,6 @@ class SearchModal(Modal, title="🔍 Recherche Marauder"):
 
     async def on_submit(self, interaction: discord.Interaction):
         await interaction.response.defer(ephemeral=True)
-        uid = interaction.user.id
-        
         payload = {"flexible": True, "per_page": MAX_RESULTS}
         query_parts = []
         
@@ -260,175 +224,139 @@ class SearchModal(Modal, title="🔍 Recherche Marauder"):
             query_parts.append(str(self.ville).strip())
         
         if not query_parts:
-            e = discord.Embed(title="❌ Champs vides", description="Remplissez au moins un champ.", color=0xef4444)
-            await interaction.followup.send(embed=e, ephemeral=True)
-            return
+            return await interaction.followup.send(embed=discord.Embed(title="❌ Champs vides", color=0xef4444), ephemeral=True)
         
-        loading_embed = discord.Embed(
-            title="⏳ Marauder Lookup",
-            description="**Recherche en cours...**\nVeuillez patienter pendant que nous analysons les données.",
-            color=PANEL_COLOR
-        )
-        loading_embed.set_footer(text="Marauder · Recherche en cours")
-        loading_message = await interaction.followup.send(embed=loading_embed, ephemeral=True)
+        loading = await interaction.followup.send(embed=discord.Embed(title="⏳ Recherche en cours...", color=PANEL_COLOR), ephemeral=True)
         
         status, data = await brix_search(payload)
-        
         if status != 200:
-            e = discord.Embed(title="❌ Erreur API", description=f"Code {status} — réessayez.", color=0xef4444)
-            await loading_message.edit(embed=e, view=None)
-            return
+            return await loading.edit(embed=discord.Embed(title=f"❌ Erreur API {status}", color=0xef4444))
         
         results = data.get("data", {}).get("results", [])
-        total = data.get("meta", {}).get("total", 0)
-        took = data.get("meta", {}).get("took_ms", 0)
-        
-        use_search(uid)
-        
         if not results:
-            e = discord.Embed(title="😶 Aucun résultat", description="Essayez avec moins de critères.", color=0xf59e0b)
-            await loading_message.edit(embed=e, view=None)
-            return
+            return await loading.edit(embed=discord.Embed(title="😶 Aucun résultat", color=0xf59e0b))
         
-        query_info = " · ".join(query_parts)
-        view = ResultsView(results, total, took, query_info, loading_message)
-        
-        header = discord.Embed(
-            title=f"🔍 {total:,} résultat{'s' if total > 1 else ''} · {took}ms",
-            description=f"Affichage de **{min(len(results), MAX_RESULTS)}** fiches",
-            color=PANEL_COLOR
-        )
-        
-        await loading_message.delete()
-        await interaction.followup.send(embed=header, ephemeral=True)
+        await loading.delete()
+        view = ResultsView(results, len(results), 0, " · ".join(query_parts))
         await interaction.followup.send(embed=view.current_embed(), view=view, ephemeral=True)
 
 class LookupModal(Modal, title="⚡ Lookup rapide"):
-    value = TextInput(label="Email, téléphone ou IBAN", placeholder="jean@gmail.com / 0612345678 / FR76...")
+    value = TextInput(label="Email, téléphone ou IBAN")
 
     async def on_submit(self, interaction: discord.Interaction):
         await interaction.response.defer(ephemeral=True)
-        uid = interaction.user.id
-        
-        loading_embed = discord.Embed(
-            title="⏳ Marauder Lookup",
-            description="**Recherche en cours...**",
-            color=PANEL_COLOR
-        )
-        loading_embed.set_footer(text="Marauder · Recherche en cours")
-        loading_message = await interaction.followup.send(embed=loading_embed, ephemeral=True)
+        loading = await interaction.followup.send(embed=discord.Embed(title="⏳ Lookup en cours...", color=PANEL_COLOR), ephemeral=True)
         
         status, data = await brix_lookup(str(self.value).strip())
-        
         if status != 200:
-            e = discord.Embed(title="❌ Erreur API", description=f"Code {status} — réessayez.", color=0xef4444)
-            await loading_message.edit(embed=e, view=None)
-            return
+            return await loading.edit(embed=discord.Embed(title=f"❌ Erreur API {status}", color=0xef4444))
         
         results = data.get("data", {}).get("results", [])
-        total = data.get("meta", {}).get("total", 0)
-        took = data.get("meta", {}).get("took_ms", 0)
-        
-        use_search(uid)
-        
         if not results:
-            e = discord.Embed(title="😶 Aucun résultat", color=0xf59e0b)
-            await loading_message.edit(embed=e, view=None)
-            return
+            return await loading.edit(embed=discord.Embed(title="😶 Aucun résultat", color=0xf59e0b))
         
-        query_info = str(self.value).strip()
-        view = ResultsView(results, total, took, query_info, loading_message)
-        
-        header = discord.Embed(
-            title=f"⚡ {total:,} résultat{'s' if total > 1 else ''} · {took}ms",
-            description=f"Affichage de **{min(len(results), MAX_RESULTS)}** fiches",
-            color=PANEL_COLOR
-        )
-        
-        await loading_message.delete()
-        await interaction.followup.send(embed=header, ephemeral=True)
+        await loading.delete()
+        view = ResultsView(results, len(results), 0, str(self.value).strip())
         await interaction.followup.send(embed=view.current_embed(), view=view, ephemeral=True)
 
 # ============================================
-# MAIN VIEW (PERSISTANTE)
+# MAIN VIEW (PANEL)
 # ============================================
 
 class MainView(View):
     def __init__(self):
         super().__init__(timeout=None)
-        self.add_item(Button(
-            label="🌐 Site Web",
-            style=discord.ButtonStyle.link,
-            url=API_URL,
-            row=1
-        ))
+        self.add_item(Button(label="🌐 Site Web", style=discord.ButtonStyle.link, url=API_URL, row=1))
 
-    @discord.ui.button(label="🔍 Rechercher", style=discord.ButtonStyle.primary, custom_id="main_search", row=0)
-    async def search(self, interaction: discord.Interaction, button: Button):
+    @discord.ui.button(label="🔍 Rechercher", style=discord.ButtonStyle.primary, row=0)
+    async def search(self, interaction, button):
         await interaction.response.send_modal(SearchModal())
 
-    @discord.ui.button(label="⚡ Lookup rapide", style=discord.ButtonStyle.secondary, custom_id="main_lookup", row=0)
-    async def lookup(self, interaction: discord.Interaction, button: Button):
+    @discord.ui.button(label="⚡ Lookup rapide", style=discord.ButtonStyle.secondary, row=0)
+    async def lookup(self, interaction, button):
         await interaction.response.send_modal(LookupModal())
 
 # ============================================
-# TICKET SYSTEM
+# MODAL TICKET AVEC RAISON
 # ============================================
 
-class TicketView(View):
-    def __init__(self):
-        super().__init__(timeout=None)
+class TicketModal(Modal, title="🎫 Nouveau ticket"):
+    raison = TextInput(
+        label="📌 Raison du ticket",
+        placeholder="Expliquez votre demande ou problème...",
+        style=discord.TextStyle.paragraph,
+        required=True,
+        max_length=1000
+    )
 
-    @discord.ui.button(label="🎫 Ouvrir un ticket", style=discord.ButtonStyle.primary, custom_id="open_ticket")
-    async def open_ticket(self, interaction: discord.Interaction, button: Button):
+    async def on_submit(self, interaction: discord.Interaction):
+        await interaction.response.defer(ephemeral=True)
+        
         guild = interaction.guild
         
+        # Vérifier si un ticket existe déjà pour cet utilisateur
         existing = discord.utils.get(guild.channels, name=f"ticket-{interaction.user.name.lower()}")
         if existing:
-            await interaction.response.send_message(f"❌ Vous avez déjà un ticket ouvert : {existing.mention}", ephemeral=True)
-            return
+            return await interaction.followup.send(
+                f"❌ Vous avez déjà un ticket ouvert : {existing.mention}",
+                ephemeral=True
+            )
         
         ticket_channel = guild.get_channel(TICKET_CHANNEL_ID)
         if not ticket_channel:
-            await interaction.response.send_message("❌ Salon de tickets introuvable.", ephemeral=True)
-            return
+            return await interaction.followup.send("❌ Salon de tickets introuvable.", ephemeral=True)
         
-        category = ticket_channel.category
-        
+        # Créer le salon
         overwrites = {
             guild.default_role: discord.PermissionOverwrite(read_messages=False),
             interaction.user: discord.PermissionOverwrite(read_messages=True, send_messages=True, attach_files=True),
             guild.me: discord.PermissionOverwrite(read_messages=True, send_messages=True),
         }
-        
-        staff_role = guild.get_role(STAFF_ROLE_ID)
-        owner_role = guild.get_role(OWNER_ROLE_ID)
-        
-        if staff_role:
-            overwrites[staff_role] = discord.PermissionOverwrite(read_messages=True, send_messages=True)
-        if owner_role:
-            overwrites[owner_role] = discord.PermissionOverwrite(read_messages=True, send_messages=True)
+        for role_id in [STAFF_ROLE_ID, OWNER_ROLE_ID]:
+            role = guild.get_role(role_id)
+            if role:
+                overwrites[role] = discord.PermissionOverwrite(read_messages=True, send_messages=True)
         
         channel = await guild.create_text_channel(
             f"ticket-{interaction.user.name.lower()}",
-            category=category,
-            overwrites=overwrites,
-            topic=f"Ticket de {interaction.user} | ID: {interaction.user.id}"
+            category=ticket_channel.category,
+            overwrites=overwrites
         )
         
-        ticket_embed = discord.Embed(
+        # Embed du ticket
+        embed = discord.Embed(
             title="🎫 Ticket ouvert",
-            description=(
-                f"Bienvenue {interaction.user.mention} !\n\n"
-                "Expliquez votre problème ou votre demande, un membre de l'équipe vous répondra rapidement."
-            ),
-            color=PANEL_COLOR
+            description=f"**Utilisateur :** {interaction.user.mention}\n**Raison :**\n{str(self.raison)}",
+            color=PANEL_COLOR,
+            timestamp=datetime.utcnow()
         )
-        ticket_embed.set_thumbnail(url=LOGO_URL)
-        ticket_embed.set_footer(text="Marauder Support · Cliquez sur Fermer pour clôturer le ticket")
+        embed.set_thumbnail(url=LOGO_URL)
+        embed.set_footer(text=f"ID: {interaction.user.id}")
         
-        await channel.send(embed=ticket_embed, view=CloseTicketView())
-        await interaction.response.send_message(f"✅ Votre ticket a été créé : {channel.mention}", ephemeral=True)
+        # Seul le bouton Fermer (restreint aux staff/owner)
+        await channel.send(
+            embed=embed,
+            view=CloseTicketView()
+        )
+        
+        # Message de confirmation
+        await interaction.followup.send(
+            f"✅ Votre ticket a été créé : {channel.mention}",
+            ephemeral=True
+        )
+
+# ============================================
+# TICKET VIEW (Bouton pour ouvrir)
+# ============================================
+
+class TicketView(View):
+    @discord.ui.button(label="🎫 Ouvrir un ticket", style=discord.ButtonStyle.primary)
+    async def open_ticket(self, interaction: discord.Interaction, button: Button):
+        await interaction.response.send_modal(TicketModal())
+
+# ============================================
+# CLOSE TICKET VIEW (Seul staff/owner peut fermer)
+# ============================================
 
 class CloseTicketView(View):
     def __init__(self):
@@ -436,175 +364,130 @@ class CloseTicketView(View):
 
     @discord.ui.button(label="🔒 Fermer le ticket", style=discord.ButtonStyle.danger, custom_id="close_ticket")
     async def close_ticket(self, interaction: discord.Interaction, button: Button):
+        # Vérifier si l'utilisateur a le rôle staff ou owner
         if not has_permission(interaction):
-            await interaction.response.send_message("❌ Vous n'avez pas la permission de fermer ce ticket.", ephemeral=True)
-            return
+            return await interaction.response.send_message(
+                "❌ Vous n'avez pas la permission de fermer ce ticket. Seul le staff peut le faire.",
+                ephemeral=True
+            )
         
-        channel = interaction.channel
+        if not is_ticket_channel(interaction.channel):
+            return await interaction.response.send_message(
+                "❌ Cette commande n'est utilisable que dans un ticket.",
+                ephemeral=True
+            )
         
+        await interaction.response.send_message("🔒 Fermeture du ticket dans 5 secondes...")
+        
+        # Envoyer un message de fermeture avant de supprimer
         embed = discord.Embed(
             title="🔒 Ticket fermé",
-            description=f"Fermé par {interaction.user.mention}. Suppression dans 5 secondes.",
+            description=f"Fermé par {interaction.user.mention}",
             color=0xef4444
         )
-        embed.set_thumbnail(url=LOGO_URL)
-        await interaction.response.send_message(embed=embed)
-        await asyncio.sleep(5)
+        await interaction.channel.send(embed=embed)
         
-        try:
-            await channel.delete(reason="Ticket fermé")
-        except Exception as ex:
-            print(f"Erreur suppression salon: {ex}")
+        await asyncio.sleep(5)
+        await interaction.channel.delete()
 
 # ============================================
-# RÈGLEMENT AVEC ATTRIBUTION DU RÔLE MEMBRE
+# RÈGLEMENT
 # ============================================
 
 class RulesView(View):
-    def __init__(self):
-        super().__init__(timeout=None)
-
-    @discord.ui.button(label="✅ J'accepte le règlement", style=discord.ButtonStyle.success, custom_id="accept_rules")
-    async def accept_rules(self, interaction: discord.Interaction, button: Button):
-        guild = interaction.guild
-        
-        role = guild.get_role(MEMBER_ROLE_ID)
-        
+    @discord.ui.button(label="✅ J'accepte le règlement", style=discord.ButtonStyle.success)
+    async def accept_rules(self, interaction, button):
+        role = interaction.guild.get_role(MEMBER_ROLE_ID)
         if not role:
-            await interaction.response.send_message("❌ Rôle membre introuvable. Contactez un administrateur.", ephemeral=True)
-            return
-        
+            return await interaction.response.send_message("❌ Rôle introuvable.", ephemeral=True)
         if role in interaction.user.roles:
-            await interaction.response.send_message("✅ Tu as déjà accepté le règlement !", ephemeral=True)
-            return
+            return await interaction.response.send_message("✅ Tu as déjà accepté le règlement.", ephemeral=True)
         
-        try:
-            await interaction.user.add_roles(role, reason="Règlement accepté")
-            
-            embed = discord.Embed(
-                title="✅ Règlement accepté !",
-                description=f"Tu as accepté le règlement et obtenu le rôle **{role.name}** !\n\nBienvenue sur Marauder ! 🚀",
-                color=0x22c55e
-            )
-            embed.set_thumbnail(url=LOGO_URL)
-            embed.set_footer(text="Marauder • Bonne investigation !")
-            await interaction.response.send_message(embed=embed, ephemeral=True)
-            
-        except discord.Forbidden:
-            await interaction.response.send_message(
-                "❌ Je n'ai pas la permission d'attribuer ce rôle. Contacte un administrateur.",
-                ephemeral=True
-            )
-        except Exception as e:
-            await interaction.response.send_message(
-                f"❌ Erreur lors de l'attribution du rôle : {e}",
-                ephemeral=True
-            )
-
-# ============================================
-# COMMANDES DE TICKET (STAFF ET OWNER)
-# ============================================
-
-@bot.tree.command(name="add", description="Ajouter une personne au ticket")
-async def add_to_ticket(interaction: discord.Interaction, membre: discord.Member):
-    if not has_permission(interaction):
-        await interaction.response.send_message("❌ Permission refusée. Rôle staff requis.", ephemeral=True)
-        return
-    
-    if not is_ticket_channel(interaction.channel):
-        await interaction.response.send_message("❌ Cette commande n'est utilisable que dans un ticket.", ephemeral=True)
-        return
-    
-    try:
-        await interaction.channel.set_permissions(membre, read_messages=True, send_messages=True, attach_files=True)
-        await interaction.response.send_message(f"✅ {membre.mention} a été ajouté au ticket.")
-    except Exception as e:
-        await interaction.response.send_message(f"❌ Erreur : {e}", ephemeral=True)
-
-@bot.tree.command(name="remove", description="Retirer une personne du ticket")
-async def remove_from_ticket(interaction: discord.Interaction, membre: discord.Member):
-    if not has_permission(interaction):
-        await interaction.response.send_message("❌ Permission refusée. Rôle staff requis.", ephemeral=True)
-        return
-    
-    if not is_ticket_channel(interaction.channel):
-        await interaction.response.send_message("❌ Cette commande n'est utilisable que dans un ticket.", ephemeral=True)
-        return
-    
-    try:
-        await interaction.channel.set_permissions(membre, read_messages=False)
-        await interaction.response.send_message(f"✅ {membre.mention} a été retiré du ticket.")
-    except Exception as e:
-        await interaction.response.send_message(f"❌ Erreur : {e}", ephemeral=True)
+        await interaction.user.add_roles(role, reason="Règlement accepté")
+        
+        embed = discord.Embed(
+            title="✅ Règlement accepté !",
+            description=f"Bienvenue sur Marauder ! Tu as obtenu le rôle {role.mention}. 🚀",
+            color=0x22c55e
+        )
+        await interaction.response.send_message(embed=embed, ephemeral=True)
 
 # ============================================
 # COMMANDES SLASH
 # ============================================
 
 @bot.tree.command(name="panel", description="Afficher le panel Marauder")
-async def panel(interaction: discord.Interaction):
-    embed = discord.Embed(
-        title="**Marauder Lookup**",
-        color=PANEL_COLOR
-    )
-    embed.set_image(url="https://cdn.discordapp.com/attachments/1477415267452719208/1529531032720904202/image.png?ex=6a906ac7&is=6a8f1947&hm=500ceaaff4f42681d8b101ce1a2e8c40591a7ac7b96ae3ed5e6a358f503d65ae&")
+async def panel(interaction):
+    embed = discord.Embed(title="**Marauder Lookup**", color=PANEL_COLOR)
+    embed.set_image(url="https://cdn.discordapp.com/attachments/1477415267452719208/1529531032720904202/image.png")
     embed.set_footer(text="Created by Index")
     await interaction.response.send_message(embed=embed, view=MainView())
 
 @bot.tree.command(name="ticket", description="Envoyer le panel de tickets")
-async def ticket_panel(interaction: discord.Interaction):
+async def ticket_panel(interaction):
     if not has_permission(interaction):
-        await interaction.response.send_message("❌ Permission refusée. Réservé au staff.", ephemeral=True)
-        return
-    
-    embed = discord.Embed(
-        title="🎫 Support Marauder",
-        description="**Besoin d'aide ?**\n\nCliquez sur le bouton ci-dessous pour ouvrir un ticket.\nL'équipe vous répondra rapidement.",
-        color=PANEL_COLOR
-    )
-    embed.set_thumbnail(url=LOGO_URL)
-    embed.set_footer(text="Marauder Support")
+        return await interaction.response.send_message("❌ Permission refusée. Réservé au staff.", ephemeral=True)
     
     channel = interaction.guild.get_channel(TICKET_CHANNEL_ID)
     if channel:
+        embed = discord.Embed(
+            title="🎫 Support Marauder",
+            description="Cliquez sur le bouton ci-dessous pour ouvrir un ticket.\nL'équipe vous répondra rapidement.",
+            color=PANEL_COLOR
+        )
+        embed.set_thumbnail(url=LOGO_URL)
         await channel.send(embed=embed, view=TicketView())
         await interaction.response.send_message(f"✅ Panel de tickets envoyé dans {channel.mention}", ephemeral=True)
     else:
         await interaction.response.send_message("❌ Salon de tickets introuvable.", ephemeral=True)
 
-@bot.tree.command(name="reglement", description="Afficher le règlement avec bouton d'acceptation")
-async def reglement(interaction: discord.Interaction):
+@bot.tree.command(name="reglement", description="Envoyer le règlement")
+async def reglement(interaction):
     if not has_owner_role(interaction):
-        await interaction.response.send_message("❌ Permission refusée. Réservé aux administrateurs.", ephemeral=True)
-        return
-    
-    embed = discord.Embed(
-        title="📜 Règlement — Marauder",
-        description=(
-            "En cliquant sur **J'accepte**, tu confirmes avoir lu et accepté les règles suivantes.\n\n"
-            "**1.** Respecte tous les membres. Aucune insulte tolérée.\n"
-            "**2.** Pas de spam ou flood dans les salons.\n"
-            "**3.** Pas de pub sans autorisation d'un admin.\n"
-            "**4.** Marauder est un outil d'investigation. Interdiction de l'utiliser pour harcèlement ou menaces.\n"
-            "**5.** Ne partage pas les résultats de recherches publiquement dans les salons.\n"
-            "**6.** Tu es seul responsable de l'utilisation des données trouvées.\n"
-            "**7.** Tout abus entraîne un ban immédiat du site et du Discord.\n"
-            "**8.** Ne partage jamais tes identifiants de connexion.\n"
-            "**9.** Les admins peuvent sanctionner tout comportement inapproprié.\n\n"
-            "En acceptant ce règlement, tu acceptes nos CGU disponibles sur [marauder.host](https://marauder.host/cgu.html).\n\n"
-            f"✅ **Tu recevras le rôle <@&{MEMBER_ROLE_ID}> après acceptation.**"
-        ),
-        color=PANEL_COLOR
-    )
-    embed.set_thumbnail(url=LOGO_URL)
-    embed.set_footer(text="Marauder · Cliquez sur le bouton pour accepter")
+        return await interaction.response.send_message("❌ Permission refusée. Réservé aux administrateurs.", ephemeral=True)
     
     channel = interaction.guild.get_channel(RULES_CHANNEL_ID)
     if channel:
+        embed = discord.Embed(
+            title="📜 Règlement Marauder",
+            description=(
+                "En cliquant sur **J'accepte**, tu confirmes avoir lu et accepté les règles.\n\n"
+                "**1.** Respecte tous les membres.\n"
+                "**2.** Pas de spam ou flood.\n"
+                "**3.** Pas de pub sans autorisation.\n"
+                "**4.** Marauder est un outil d'investigation. Utilisation responsable uniquement.\n"
+                "**5.** Ne partage pas les résultats de recherches publiquement.\n"
+                "**6.** Tu es seul responsable de l'utilisation des données.\n"
+                "**7.** Tout abus entraîne un ban.\n\n"
+                f"✅ **Tu recevras le rôle <@&{MEMBER_ROLE_ID}> après acceptation.**"
+            ),
+            color=PANEL_COLOR
+        )
+        embed.set_thumbnail(url=LOGO_URL)
         await channel.send(embed=embed, view=RulesView())
         await interaction.response.send_message(f"✅ Règlement envoyé dans {channel.mention}", ephemeral=True)
     else:
         await interaction.response.send_message("❌ Salon de règlement introuvable.", ephemeral=True)
+
+@bot.tree.command(name="add", description="Ajouter une personne au ticket")
+async def add_to_ticket(interaction, membre: discord.Member):
+    if not has_permission(interaction):
+        return await interaction.response.send_message("❌ Permission refusée. Rôle staff requis.", ephemeral=True)
+    if not is_ticket_channel(interaction.channel):
+        return await interaction.response.send_message("❌ Cette commande n'est utilisable que dans un ticket.", ephemeral=True)
+    
+    await interaction.channel.set_permissions(membre, read_messages=True, send_messages=True, attach_files=True)
+    await interaction.response.send_message(f"✅ {membre.mention} a été ajouté au ticket.")
+
+@bot.tree.command(name="remove", description="Retirer une personne du ticket")
+async def remove_from_ticket(interaction, membre: discord.Member):
+    if not has_permission(interaction):
+        return await interaction.response.send_message("❌ Permission refusée. Rôle staff requis.", ephemeral=True)
+    if not is_ticket_channel(interaction.channel):
+        return await interaction.response.send_message("❌ Cette commande n'est utilisable que dans un ticket.", ephemeral=True)
+    
+    await interaction.channel.set_permissions(membre, read_messages=False)
+    await interaction.response.send_message(f"✅ {membre.mention} a été retiré du ticket.")
 
 # ============================================
 # ÉVÉNEMENTS
@@ -612,22 +495,16 @@ async def reglement(interaction: discord.Interaction):
 
 @bot.event
 async def on_ready():
-    bot.add_view(MainView())
-    bot.add_view(TicketView())
-    bot.add_view(CloseTicketView())
-    bot.add_view(RulesView())
-    
+    for view in [MainView(), TicketView(), CloseTicketView(), RulesView()]:
+        bot.add_view(view)
     await bot.tree.sync()
-    await bot.change_presence(
-        activity=discord.Activity(type=discord.ActivityType.playing, name="/panel | Marauder")
-    )
-    print(f"✅ {bot.user} connecté sur {len(bot.guilds)} serveur(s)")
+    await bot.change_presence(activity=discord.Activity(type=discord.ActivityType.playing, name="/panel | Marauder"))
+    print(f"✅ {bot.user} connecté")
     print(f"✅ Salon Ticket: {TICKET_CHANNEL_ID}")
     print(f"✅ Salon Règlement: {RULES_CHANNEL_ID}")
     print(f"✅ Rôle Staff: {STAFF_ROLE_ID}")
     print(f"✅ Rôle Owner: {OWNER_ROLE_ID}")
     print(f"✅ Rôle Membre: {MEMBER_ROLE_ID}")
-    print(f"✅ API URL: {API_URL}")
 
 # ============================================
 # LANCEMENT
