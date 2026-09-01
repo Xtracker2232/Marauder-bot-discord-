@@ -26,8 +26,6 @@ if not TOKEN:
     raise ValueError("❌ DISCORD_TOKEN non défini !")
 if not BRIX_KEY:
     raise ValueError("❌ BRIX_KEY non défini !")
-if not AUTO_WAYS_KEY:
-    print("⚠️ AUTO_WAYS_KEY non défini - La commande /plaque ne fonctionnera pas")
 
 # ============================================
 # INTENTS
@@ -115,50 +113,141 @@ async def brix_lookup(value):
 async def get_car_info(plate):
     """Récupère les infos d'un véhicule via Auto Ways Network"""
     url = f"https://app.auto-ways.net/api/v1/fr?plate={plate}"
-    headers = {"Authorization": f"Bearer {AUTO_WAYS_KEY}"}
+    headers = {
+        "Authorization": f"Bearer {AUTO_WAYS_KEY}",
+        "Accept": "application/json"
+    }
     async with aiohttp.ClientSession() as session:
         async with session.get(url, headers=headers, timeout=15) as r:
             return r.status, await r.json()
 
 def format_car_embed(data, plate):
-    """Crée un embed avec les infos du véhicule"""
+    """Crée un embed avec les infos du véhicule selon la documentation"""
+    
+    # Récupérer les infos principales
+    marque = data.get('AWN_marque', '?')
+    modele = data.get('AWN_modele', '?')
+    version = data.get('AWN_version', '')
+    immat = data.get('AWN_immat', plate)
+    
+    # Titre
+    title = f"🚗 {marque} {modele}"
+    if version:
+        title += f" {version}"
+    
     embed = discord.Embed(
-        title=f"🚗 {data.get('AWN_marque', '?')} {data.get('AWN_modele', '?')}",
-        description=f"**Plaque :** {data.get('AWN_immat', plate)}",
+        title=title,
+        description=f"**Plaque :** {immat}",
         color=PANEL_COLOR,
         timestamp=datetime.utcnow()
     )
-    embed.set_thumbnail(url=data.get('AWN_marque_image', LOGO_URL))
     
-    embed.add_field(name="📅 Année", value=data.get('AWN_annee_de_debut_modele', 'N/A'), inline=True)
-    embed.add_field(name="⛽ Carburant", value=data.get('AWN_energie', 'N/A'), inline=True)
-    embed.add_field(name="🏎️ Puissance", value=f"{data.get('AWN_puissance_chevaux', '?')} ch", inline=True)
-    embed.add_field(name="📊 Puissance fiscale", value=f"{data.get('AWN_puissance_fiscale', '?')} CV", inline=True)
-    embed.add_field(name="🔧 Cylindrée", value=f"{data.get('AWN_cylindre_capacite', '?')} cm³", inline=True)
-    embed.add_field(name="📐 Carrosserie", value=data.get('AWN_carrosserie', 'N/A'), inline=True)
-    embed.add_field(name="🚪 Portes", value=data.get('AWN_nbr_portes', '?'), inline=True)
-    embed.add_field(name="👥 Places", value=data.get('AWN_nbr_de_places', '?'), inline=True)
+    # Image de la marque
+    marque_image = data.get('AWN_marque_image')
+    if marque_image:
+        embed.set_thumbnail(url=marque_image)
+    else:
+        embed.set_thumbnail(url=LOGO_URL)
     
+    # ============================================
+    # 1. IDENTIFICATION DU VÉHICULE
+    # ============================================
     embed.add_field(
-        name="📋 Détails",
-        value=f"**Moteur :** {data.get('AWN_code_moteur', 'N/A')}\n**Boîte :** {data.get('AWN_type_boite_vites', 'N/A')}\n**Couleur :** {data.get('AWN_couleur', 'N/A')}",
+        name="📋 Identification",
+        value=(
+            f"**Marque :** {data.get('AWN_marque', 'N/A')}\n"
+            f"**Modèle :** {data.get('AWN_modele', 'N/A')}\n"
+            f"**Version :** {data.get('AWN_version', 'N/A')}\n"
+            f"**Carrosserie :** {data.get('AWN_carrosserie', 'N/A')}\n"
+            f"**Genre :** {data.get('AWN_genre_label', 'N/A')}"
+        ),
         inline=False
     )
     
-    co2 = data.get('AWN_emission_co_2', '?')
-    norme = data.get('AWN_env_class', 'N/A')
+    # ============================================
+    # 2. CARACTÉRISTIQUES TECHNIQUES
+    # ============================================
+    embed.add_field(
+        name="🔧 Caractéristiques techniques",
+        value=(
+            f"**Année :** {data.get('AWN_annee_de_debut_modele', 'N/A')}\n"
+            f"**Puissance :** {data.get('AWN_puissance_chevaux', '?')} ch\n"
+            f"**Puissance fiscale :** {data.get('AWN_puissance_fiscale', '?')} CV\n"
+            f"**Cylindrée :** {data.get('AWN_cylindre_capacite', '?')} cm³\n"
+            f"**Carburant :** {data.get('AWN_energie', 'N/A')}\n"
+            f"**Boîte :** {data.get('AWN_type_boite_vites', 'N/A')}\n"
+            f"**Couleur :** {data.get('AWN_couleur', 'N/A')}\n"
+            f"**Places :** {data.get('AWN_nbr_de_places', '?')}"
+        ),
+        inline=True
+    )
+    
+    # ============================================
+    # 3. POIDS ET DIMENSIONS
+    # ============================================
+    embed.add_field(
+        name="📐 Poids & Dimensions",
+        value=(
+            f"**Longueur :** {data.get('AWN_longueur', '?')} cm\n"
+            f"**Largeur :** {data.get('AWN_largeur', '?')} cm\n"
+            f"**Hauteur :** {data.get('AWN_hauteur', '?')} cm\n"
+            f"**Empattement :** {data.get('AWN_empattement', '?')} cm\n"
+            f"**PTAC :** {data.get('AWN_PTAC', '?')} kg\n"
+            f"**PTRA :** {data.get('AWN_PTRA', '?')} kg"
+        ),
+        inline=True
+    )
+    
+    # ============================================
+    # 4. ENVIRONNEMENT
+    # ============================================
     embed.add_field(
         name="🌍 Environnement",
-        value=f"**CO₂ :** {co2} g/km\n**Norme :** {norme}",
+        value=(
+            f"**CO₂ :** {data.get('AWN_emission_co_2', '?')} g/km\n"
+            f"**Norme Euro :** {data.get('AWN_env_class', 'N/A')}\n"
+            f"**AdBlue :** {data.get('AWN_ad_blue', 'N/A')}\n"
+            f"**Consommation urbaine :** {data.get('AWN_consommation_urbaine', '?')} L/100km\n"
+            f"**Consommation mixte :** {data.get('AWN_consommation_mixte', '?')} L/100km"
+        ),
+        inline=True
+    )
+    
+    # ============================================
+    # 5. PNEUS
+    # ============================================
+    pneus = data.get('AWN_pneus', [])
+    if pneus:
+        pneu_text = ""
+        for p in pneus[:3]:  # Max 3 pneus
+            pneu_text += f"• {p.get('label', 'N/A')}\n"
+        if len(pneus) > 3:
+            pneu_text += f"... et {len(pneus) - 3} autres"
+        embed.add_field(name="🔘 Pneus compatibles", value=pneu_text or "N/A", inline=False)
+    
+    # ============================================
+    # 6. IDENTIFIANTS
+    # ============================================
+    embed.add_field(
+        name="🔑 Identifiants",
+        value=(
+            f"**VIN :** {data.get('AWN_VIN', 'N/A')}\n"
+            f"**K-Type :** {data.get('AWN_k_type', 'N/A')}\n"
+            f"**Code moteur :** {data.get('AWN_code_moteur', 'N/A')}\n"
+            f"**KBA :** {data.get('AWN_KBA', 'N/A')}"
+        ),
         inline=False
     )
     
-    pneus = data.get('AWN_pneus', [])
-    if pneus and len(pneus) > 0:
-        pneu_text = pneus[0].get('label', f"{pneus[0].get('width', '?')}/{pneus[0].get('aspect_ratio', '?')}R{pneus[0].get('diameter', '?')}")
-        embed.add_field(name="🔘 Pneus", value=pneu_text, inline=True)
+    # ============================================
+    # 7. FOOTER
+    # ============================================
+    date_cg = data.get('AWN_date_cg', '')
+    if date_cg:
+        embed.set_footer(text=f"Auto Ways Network · Carte grise du {date_cg}")
+    else:
+        embed.set_footer(text="Auto Ways Network · Données SIV")
     
-    embed.set_footer(text="Auto Ways Network · Données SIV")
     return embed
 
 # ============================================
@@ -229,8 +318,11 @@ class ResultsView(View):
         self.index = 0
         self.loading_message = loading_message
         
-        self.add_item(Button(label="🌐 Site Web", style=discord.ButtonStyle.link, url=API_URL))
-        self.add_item(Button(label="💬 Discord", style=discord.ButtonStyle.link, url="https://discord.gg/jf6QRZHaTB"))
+        self.add_item(Button(
+            label="🌐 Site Web",
+            style=discord.ButtonStyle.link,
+            url=API_URL
+        ))
         self._update_buttons()
 
     def _update_buttons(self):
@@ -393,19 +485,28 @@ class PlaqueModal(Modal, title="🚗 Recherche par plaque"):
                     color=0xef4444
                 )
             )
-        elif status == 401:
+        elif status == 401 or status == 403:
             return await loading.edit(
                 embed=discord.Embed(
-                    title="❌ Clé API invalide",
-                    description="Vérifie ta clé Auto Ways Network.",
+                    title="❌ Clé API invalide ou accès refusé",
+                    description="Vérifie ta clé Auto Ways Network et ton abonnement.",
                     color=0xef4444
                 )
             )
+        elif status == 429:
+            return await loading.edit(
+                embed=discord.Embed(
+                    title="⏳ Trop de requêtes",
+                    description="Limite de l'API atteinte. Réessaie dans quelques minutes.",
+                    color=0xf59e0b
+                )
+            )
         elif status != 200:
+            error_text = await r.text() if 'r' in locals() else "Erreur inconnue"
             return await loading.edit(
                 embed=discord.Embed(
                     title=f"❌ Erreur {status}",
-                    description="Une erreur est survenue, réessaie plus tard.",
+                    description=f"Une erreur est survenue.\n\n```{error_text[:200]}```",
                     color=0xef4444
                 )
             )
@@ -433,13 +534,7 @@ class MainView(View):
             label="🌐 Site Web",
             style=discord.ButtonStyle.link,
             url=API_URL,
-            row=2
-        ))
-        self.add_item(Button(
-            label="💬 Discord",
-            style=discord.ButtonStyle.link,
-            url="https://discord.gg/jf6QRZHaTB",
-            row=2
+            row=1
         ))
 
     @discord.ui.button(label="🔍 Rechercher", style=discord.ButtonStyle.primary, row=0, custom_id="main_search")
@@ -778,9 +873,21 @@ async def plaque_slash(interaction: discord.Interaction, numero: str):
                 color=0xef4444
             )
         )
-    elif status == 401:
+    elif status == 401 or status == 403:
         return await loading.edit(
-            embed=discord.Embed(title="❌ Clé API invalide", color=0xef4444)
+            embed=discord.Embed(
+                title="❌ Clé API invalide ou accès refusé",
+                description="Vérifie ta clé Auto Ways Network.",
+                color=0xef4444
+            )
+        )
+    elif status == 429:
+        return await loading.edit(
+            embed=discord.Embed(
+                title="⏳ Trop de requêtes",
+                description="Limite de l'API atteinte. Réessaie dans quelques minutes.",
+                color=0xf59e0b
+            )
         )
     elif status != 200:
         return await loading.edit(
@@ -793,7 +900,11 @@ async def plaque_slash(interaction: discord.Interaction, numero: str):
     
     if not data:
         return await loading.edit(
-            embed=discord.Embed(title="❌ Données vides", color=0xef4444)
+            embed=discord.Embed(
+                title="❌ Données vides",
+                description="Aucune donnée reçue pour cette plaque.",
+                color=0xef4444
+            )
         )
     
     embed = format_car_embed(data, plate)
