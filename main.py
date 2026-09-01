@@ -5,39 +5,35 @@ import aiohttp
 import io
 from datetime import datetime
 import os
-from dotenv import load_dotenv
 import asyncio
 
 # ============================================
-# CHARGER LES VARIABLES D'ENVIRONNEMENT
+# VARIABLES D'ENVIRONNEMENT (RAILWAY)
 # ============================================
-load_dotenv()
-
 TOKEN = os.getenv('DISCORD_TOKEN')
 BRIX_KEY = os.getenv('BRIX_KEY')
 API_URL = os.getenv('API_URL', "https://marauder.host")
 BRIX_API_URL = os.getenv('BRIX_API_URL', "https://api.brixhub.to/api/v1")
 
+# ID DES SALONS ET RÔLES (DEPUIS RAILWAY)
+TICKET_CHANNEL_ID = int(os.getenv('TICKET_CHANNEL_ID', 1544288399781797930))
+RULES_CHANNEL_ID = int(os.getenv('RULES_CHANNEL_ID', 1544282830039810168))
+STAFF_ROLE_ID = int(os.getenv('STAFF_ROLE_ID', 1544289961942065172))
+OWNER_ROLE_ID = int(os.getenv('OWNER_ROLE_ID', 1544301570588672042))
+MEMBER_ROLE_ID = int(os.getenv('MEMBER_ROLE_ID', 1544282221916065792))
+
+# VÉRIFICATION DES VARIABLES OBLIGATOIRES
 if not TOKEN:
-    raise ValueError("❌ DISCORD_TOKEN non défini !")
+    raise ValueError("❌ DISCORD_TOKEN non défini ! Ajoute-le dans les variables Railway.")
 if not BRIX_KEY:
-    raise ValueError("❌ BRIX_KEY non défini !")
+    raise ValueError("❌ BRIX_KEY non défini ! Ajoute-la dans les variables Railway.")
 
 # ============================================
-# CONFIGURATION AVEC TES ID
+# CONFIGURATION
 # ============================================
 MAX_RESULTS = 10
 PANEL_COLOR = 0x6366f1
 LOGO_URL = "https://cdn.discordapp.com/attachments/1477415267452719208/1543881553220997240/favicon-32x32.png?ex=6a967b3e&is=6a9529be&hm=73725b0a8477c3d60cad60b87ea9d91bfbb90672f606b199b78e5e797d1cdb7b&"
-
-# ============================================
-# ID QUE TU M'AS DONNÉ
-# ============================================
-TICKET_CHANNEL_ID = 1544288399781797930     # Salon ticket
-RULES_CHANNEL_ID = 1544282830039810168      # Salon règlement
-STAFF_ROLE_ID = 1544289961942065172         # Rôle staff (add/remove)
-OWNER_ROLE_ID = 1544301570588672042         # Rôle owner (toutes commandes)
-MEMBER_ROLE_ID = 1544282221916065792        # Rôle membre (attribué après acceptation règles)
 
 # ============================================
 # INTENTS
@@ -183,7 +179,7 @@ class ResultsView(View):
         self.add_item(Button(
             label="🌐 Site Web",
             style=discord.ButtonStyle.link,
-            url="https://marauder.host"
+            url=API_URL
         ))
         
         self._update_buttons()
@@ -363,7 +359,7 @@ class MainView(View):
         self.add_item(Button(
             label="🌐 Site Web",
             style=discord.ButtonStyle.link,
-            url="https://marauder.host",
+            url=API_URL,
             row=1
         ))
 
@@ -472,20 +468,17 @@ class RulesView(View):
     async def accept_rules(self, interaction: discord.Interaction, button: Button):
         guild = interaction.guild
         
-        # Récupérer le rôle membre
         role = guild.get_role(MEMBER_ROLE_ID)
         
         if not role:
             await interaction.response.send_message("❌ Rôle membre introuvable. Contactez un administrateur.", ephemeral=True)
             return
         
-        # Vérifier si l'utilisateur a déjà le rôle
         if role in interaction.user.roles:
             await interaction.response.send_message("✅ Tu as déjà accepté le règlement !", ephemeral=True)
             return
         
         try:
-            # Ajouter le rôle
             await interaction.user.add_roles(role, reason="Règlement accepté")
             
             embed = discord.Embed(
@@ -634,6 +627,7 @@ async def on_ready():
     print(f"✅ Rôle Staff: {STAFF_ROLE_ID}")
     print(f"✅ Rôle Owner: {OWNER_ROLE_ID}")
     print(f"✅ Rôle Membre: {MEMBER_ROLE_ID}")
+    print(f"✅ API URL: {API_URL}")
 
 # ============================================
 # LANCEMENT
