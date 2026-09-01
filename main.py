@@ -73,7 +73,6 @@ def is_ticket_channel(channel):
     return channel.name.startswith("ticket-")
 
 def use_search(uid):
-    """Incrémenter les stats"""
     global bot_stats
     bot_stats["total_searches"] += 1
     bot_stats["searches_today"] += 1
@@ -339,7 +338,7 @@ class MainView(View):
         await interaction.response.send_modal(LookupModal())
 
 # ============================================
-# MODAL TICKET AVEC RAISON
+# MODAL TICKET
 # ============================================
 
 class TicketModal(Modal, title="🎫 Nouveau ticket"):
@@ -400,7 +399,7 @@ class TicketModal(Modal, title="🎫 Nouveau ticket"):
         )
 
 # ============================================
-# TICKET VIEW (Bouton pour ouvrir)
+# TICKET VIEW
 # ============================================
 
 class TicketView(View):
@@ -409,7 +408,7 @@ class TicketView(View):
         await interaction.response.send_modal(TicketModal())
 
 # ============================================
-# CLOSE TICKET VIEW (Seul staff/owner peut fermer)
+# CLOSE TICKET VIEW
 # ============================================
 
 class CloseTicketView(View):
@@ -420,7 +419,7 @@ class CloseTicketView(View):
     async def close_ticket(self, interaction: discord.Interaction, button: Button):
         if not has_permission(interaction):
             return await interaction.response.send_message(
-                "❌ Vous n'avez pas la permission de fermer ce ticket. Seul le staff peut le faire.",
+                "❌ Vous n'avez pas la permission de fermer ce ticket.",
                 ephemeral=True
             )
         
@@ -453,26 +452,26 @@ class RulesView(View):
         if not role:
             return await interaction.response.send_message("❌ Rôle introuvable.", ephemeral=True)
         if role in interaction.user.roles:
-            return await interaction.response.send_message("✅ Tu as déjà accepté le règlement.", ephemeral=True)
+            return await interaction.response.send_message("✅ Tu as déjà accepté.", ephemeral=True)
         
         await interaction.user.add_roles(role, reason="Règlement accepté")
         
         embed = discord.Embed(
             title="✅ Règlement accepté !",
-            description=f"Bienvenue sur Marauder ! Tu as obtenu le rôle {role.mention}. 🚀",
+            description=f"Bienvenue sur Marauder ! 🚀",
             color=0x22c55e
         )
         await interaction.response.send_message(embed=embed, ephemeral=True)
 
 # ============================================
-# COMMANDE /STATS (UNIQUEMENT OWNER)
+# COMMANDE /STATS (Owner)
 # ============================================
 
-@bot.tree.command(name="stats", description="📊 Voir les statistiques du bot (Owner uniquement)")
+@bot.tree.command(name="stats", description="📊 Voir les statistiques (Owner)")
 async def stats(interaction: discord.Interaction):
     if not has_owner_role(interaction):
         return await interaction.response.send_message(
-            "❌ Vous n'avez pas la permission d'utiliser cette commande. Réservé au propriétaire.",
+            "❌ Réservé au propriétaire.",
             ephemeral=True
         )
     
@@ -496,24 +495,20 @@ async def stats(interaction: discord.Interaction):
         users_list = "\n".join([f"<@{uid}>" for uid in list(bot_stats["total_users"])[:10]])
         if len(bot_stats["total_users"]) > 10:
             users_list += f"\n... et {len(bot_stats['total_users']) - 10} autres"
-        embed.add_field(
-            name="👥 Derniers utilisateurs",
-            value=users_list or "Aucun",
-            inline=False
-        )
+        embed.add_field(name="👥 Derniers utilisateurs", value=users_list or "Aucun", inline=False)
     
     embed.set_footer(text="Marauder · Statistiques en temps réel")
     await interaction.response.send_message(embed=embed)
 
 # ============================================
-# COMMANDE /RESET (UNIQUEMENT OWNER)
+# COMMANDE /RESET (Owner)
 # ============================================
 
-@bot.tree.command(name="reset", description="🔄 Réinitialiser les stats quotidiennes (Owner uniquement)")
+@bot.tree.command(name="reset", description="🔄 Réinitialiser les stats quotidiennes (Owner)")
 async def reset_stats(interaction: discord.Interaction):
     if not has_owner_role(interaction):
         return await interaction.response.send_message(
-            "❌ Vous n'avez pas la permission d'utiliser cette commande. Réservé au propriétaire.",
+            "❌ Réservé au propriétaire.",
             ephemeral=True
         )
     
@@ -521,13 +516,10 @@ async def reset_stats(interaction: discord.Interaction):
     bot_stats["searches_today"] = 0
     bot_stats["last_reset"] = datetime.now()
     
-    await interaction.response.send_message(
-        "✅ Statistiques quotidiennes réinitialisées !",
-        ephemeral=True
-    )
+    await interaction.response.send_message("✅ Statistiques quotidiennes réinitialisées !", ephemeral=True)
 
 # ============================================
-# COMMANDES SLASH
+# COMMANDE /PANEL
 # ============================================
 
 @bot.tree.command(name="panel", description="Afficher le panel Marauder")
@@ -541,33 +533,39 @@ async def panel(interaction):
     embed.set_footer(text="Created by Index")
     await interaction.response.send_message(embed=embed, view=MainView())
 
+# ============================================
+# COMMANDE /TICKET
+# ============================================
+
 @bot.tree.command(name="ticket", description="Envoyer le panel de tickets")
 async def ticket_panel(interaction):
     if not has_permission(interaction):
-        return await interaction.response.send_message("❌ Permission refusée. Réservé au staff.", ephemeral=True)
+        return await interaction.response.send_message("❌ Permission refusée.", ephemeral=True)
     
-    # ✅ DEFFERER
     await interaction.response.defer(ephemeral=True)
     
     channel = interaction.guild.get_channel(TICKET_CHANNEL_ID)
     if channel:
         embed = discord.Embed(
             title="🎫 Support Marauder",
-            description="Cliquez sur le bouton ci-dessous pour ouvrir un ticket.\nL'équipe vous répondra rapidement.",
+            description="Cliquez ci-dessous pour ouvrir un ticket.",
             color=PANEL_COLOR
         )
         embed.set_thumbnail(url=LOGO_URL)
         await channel.send(embed=embed, view=TicketView())
-        await interaction.followup.send(f"✅ Panel de tickets envoyé dans {channel.mention}", ephemeral=True)
+        await interaction.followup.send(f"✅ Panel envoyé dans {channel.mention}", ephemeral=True)
     else:
         await interaction.followup.send("❌ Salon de tickets introuvable.", ephemeral=True)
+
+# ============================================
+# COMMANDE /REGLEMENT
+# ============================================
 
 @bot.tree.command(name="reglement", description="Envoyer le règlement")
 async def reglement(interaction):
     if not has_owner_role(interaction):
-        return await interaction.response.send_message("❌ Permission refusée. Réservé aux administrateurs.", ephemeral=True)
+        return await interaction.response.send_message("❌ Permission refusée.", ephemeral=True)
     
-    # ✅ DEFFERER
     await interaction.response.defer(ephemeral=True)
     
     channel = interaction.guild.get_channel(RULES_CHANNEL_ID)
@@ -575,14 +573,13 @@ async def reglement(interaction):
         embed = discord.Embed(
             title="📜 Règlement Marauder",
             description=(
-                "En cliquant sur **J'accepte**, tu confirmes avoir lu et accepté les règles.\n\n"
                 "**1.** Respecte tous les membres.\n"
                 "**2.** Pas de spam ou flood.\n"
                 "**3.** Pas de pub sans autorisation.\n"
-                "**4.** Marauder est un outil d'investigation. Utilisation responsable uniquement.\n"
-                "**5.** Ne partage pas les résultats de recherches publiquement.\n"
-                "**6.** Tu es seul responsable de l'utilisation des données.\n"
-                "**7.** Tout abus entraîne un ban.\n\n"
+                "**4.** Marauder est un outil d'investigation. Utilisation responsable.\n"
+                "**5.** Ne partage pas les résultats publiquement.\n"
+                "**6.** Tu es seul responsable des données.\n"
+                "**7.** Tout abus = ban.\n\n"
                 f"✅ **Tu recevras le rôle <@&{MEMBER_ROLE_ID}> après acceptation.**"
             ),
             color=PANEL_COLOR
@@ -591,27 +588,35 @@ async def reglement(interaction):
         await channel.send(embed=embed, view=RulesView())
         await interaction.followup.send(f"✅ Règlement envoyé dans {channel.mention}", ephemeral=True)
     else:
-        await interaction.followup.send("❌ Salon de règlement introuvable.", ephemeral=True)
+        await interaction.followup.send("❌ Salon introuvable.", ephemeral=True)
+
+# ============================================
+# COMMANDE /ADD
+# ============================================
 
 @bot.tree.command(name="add", description="Ajouter une personne au ticket")
 async def add_to_ticket(interaction, membre: discord.Member):
     if not has_permission(interaction):
-        return await interaction.response.send_message("❌ Permission refusée. Rôle staff requis.", ephemeral=True)
+        return await interaction.response.send_message("❌ Permission refusée.", ephemeral=True)
     if not is_ticket_channel(interaction.channel):
-        return await interaction.response.send_message("❌ Cette commande n'est utilisable que dans un ticket.", ephemeral=True)
+        return await interaction.response.send_message("❌ Uniquement dans un ticket.", ephemeral=True)
     
     await interaction.channel.set_permissions(membre, read_messages=True, send_messages=True, attach_files=True)
-    await interaction.response.send_message(f"✅ {membre.mention} a été ajouté au ticket.")
+    await interaction.response.send_message(f"✅ {membre.mention} ajouté au ticket.")
+
+# ============================================
+# COMMANDE /REMOVE
+# ============================================
 
 @bot.tree.command(name="remove", description="Retirer une personne du ticket")
 async def remove_from_ticket(interaction, membre: discord.Member):
     if not has_permission(interaction):
-        return await interaction.response.send_message("❌ Permission refusée. Rôle staff requis.", ephemeral=True)
+        return await interaction.response.send_message("❌ Permission refusée.", ephemeral=True)
     if not is_ticket_channel(interaction.channel):
-        return await interaction.response.send_message("❌ Cette commande n'est utilisable que dans un ticket.", ephemeral=True)
+        return await interaction.response.send_message("❌ Uniquement dans un ticket.", ephemeral=True)
     
     await interaction.channel.set_permissions(membre, read_messages=False)
-    await interaction.response.send_message(f"✅ {membre.mention} a été retiré du ticket.")
+    await interaction.response.send_message(f"✅ {membre.mention} retiré du ticket.")
 
 # ============================================
 # ÉVÉNEMENTS
@@ -631,7 +636,6 @@ async def on_ready():
     print(f"✅ Rôle Staff: {STAFF_ROLE_ID}")
     print(f"✅ Rôle Owner: {OWNER_ROLE_ID}")
     print(f"✅ Rôle Membre: {MEMBER_ROLE_ID}")
-    print(f"✅ Bot démarré depuis le {datetime.now().strftime('%d/%m/%Y %H:%M')}")
 
 # ============================================
 # LANCEMENT
