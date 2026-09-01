@@ -14,6 +14,7 @@ TOKEN = os.getenv('DISCORD_TOKEN')
 BRIX_KEY = os.getenv('BRIX_KEY')
 API_URL = os.getenv('API_URL', "https://marauder.host")
 BRIX_API_URL = os.getenv('BRIX_API_URL', "https://api.brixhub.to/api/v1")
+AUTO_WAYS_KEY = os.getenv('AUTO_WAYS_KEY')
 
 TICKET_CHANNEL_ID = int(os.getenv('TICKET_CHANNEL_ID', 0))
 RULES_CHANNEL_ID = int(os.getenv('RULES_CHANNEL_ID', 0))
@@ -25,6 +26,8 @@ if not TOKEN:
     raise ValueError("❌ DISCORD_TOKEN non défini !")
 if not BRIX_KEY:
     raise ValueError("❌ BRIX_KEY non défini !")
+if not AUTO_WAYS_KEY:
+    print("⚠️ AUTO_WAYS_KEY non défini - La commande /plaque ne fonctionnera pas")
 
 # ============================================
 # INTENTS
@@ -79,7 +82,7 @@ def use_search(uid):
     bot_stats["total_users"].add(uid)
 
 # ============================================
-# API BRIX
+# API BRIX (RECHERCHE OSINT)
 # ============================================
 
 async def brix_search(payload):
@@ -104,6 +107,59 @@ async def brix_lookup(value):
     async with aiohttp.ClientSession() as session:
         async with session.get(f"{BRIX_API_URL}/lookup/{path}", headers=headers, timeout=15) as r:
             return r.status, await r.json()
+
+# ============================================
+# API AUTO WAYS NETWORK (PLAQUE)
+# ============================================
+
+async def get_car_info(plate):
+    """Récupère les infos d'un véhicule via Auto Ways Network"""
+    url = f"https://app.auto-ways.net/api/v1/fr?plate={plate}"
+    headers = {"Authorization": f"Bearer {AUTO_WAYS_KEY}"}
+    async with aiohttp.ClientSession() as session:
+        async with session.get(url, headers=headers, timeout=15) as r:
+            return r.status, await r.json()
+
+def format_car_embed(data, plate):
+    """Crée un embed avec les infos du véhicule"""
+    embed = discord.Embed(
+        title=f"🚗 {data.get('AWN_marque', '?')} {data.get('AWN_modele', '?')}",
+        description=f"**Plaque :** {data.get('AWN_immat', plate)}",
+        color=PANEL_COLOR,
+        timestamp=datetime.utcnow()
+    )
+    embed.set_thumbnail(url=data.get('AWN_marque_image', LOGO_URL))
+    
+    embed.add_field(name="📅 Année", value=data.get('AWN_annee_de_debut_modele', 'N/A'), inline=True)
+    embed.add_field(name="⛽ Carburant", value=data.get('AWN_energie', 'N/A'), inline=True)
+    embed.add_field(name="🏎️ Puissance", value=f"{data.get('AWN_puissance_chevaux', '?')} ch", inline=True)
+    embed.add_field(name="📊 Puissance fiscale", value=f"{data.get('AWN_puissance_fiscale', '?')} CV", inline=True)
+    embed.add_field(name="🔧 Cylindrée", value=f"{data.get('AWN_cylindre_capacite', '?')} cm³", inline=True)
+    embed.add_field(name="📐 Carrosserie", value=data.get('AWN_carrosserie', 'N/A'), inline=True)
+    embed.add_field(name="🚪 Portes", value=data.get('AWN_nbr_portes', '?'), inline=True)
+    embed.add_field(name="👥 Places", value=data.get('AWN_nbr_de_places', '?'), inline=True)
+    
+    embed.add_field(
+        name="📋 Détails",
+        value=f"**Moteur :** {data.get('AWN_code_moteur', 'N/A')}\n**Boîte :** {data.get('AWN_type_boite_vites', 'N/A')}\n**Couleur :** {data.get('AWN_couleur', 'N/A')}",
+        inline=False
+    )
+    
+    co2 = data.get('AWN_emission_co_2', '?')
+    norme = data.get('AWN_env_class', 'N/A')
+    embed.add_field(
+        name="🌍 Environnement",
+        value=f"**CO₂ :** {co2} g/km\n**Norme :** {norme}",
+        inline=False
+    )
+    
+    pneus = data.get('AWN_pneus', [])
+    if pneus and len(pneus) > 0:
+        pneu_text = pneus[0].get('label', f"{pneus[0].get('width', '?')}/{pneus[0].get('aspect_ratio', '?')}R{pneus[0].get('diameter', '?')}")
+        embed.add_field(name="🔘 Pneus", value=pneu_text, inline=True)
+    
+    embed.set_footer(text="Auto Ways Network · Données SIV")
+    return embed
 
 # ============================================
 # FORMATAGE
@@ -160,7 +216,7 @@ def results_to_txt(results, query_info=""):
     return "\n".join(lines)
 
 # ============================================
-# VIEW RÉSULTATS (AVEC custom_id)
+# VIEW RÉSULTATS
 # ============================================
 
 class ResultsView(View):
@@ -173,16 +229,8 @@ class ResultsView(View):
         self.index = 0
         self.loading_message = loading_message
         
-        self.add_item(Button(
-            label="🌐 Site Web",
-            style=discord.ButtonStyle.link,
-            url=API_URL
-        ))
-        self.add_item(Button(
-            label="💬 Discord",
-            style=discord.ButtonStyle.link,
-            url="https://discord.gg/jf6QRZHaTB"
-        ))
+        self.add_item(Button(label="🌐 Site Web", style=discord.ButtonStyle.link, url=API_URL))
+        self.add_item(Button(label="💬 Discord", style=discord.ButtonStyle.link, url="https://discord.gg/jf6QRZHaTB"))
         self._update_buttons()
 
     def _update_buttons(self):
@@ -223,7 +271,7 @@ class ResultsView(View):
         )
 
 # ============================================
-# MODALS
+# MODALS (RECHERCHE)
 # ============================================
 
 class SearchModal(Modal, title="🔍 Recherche Marauder"):
@@ -268,19 +316,14 @@ class SearchModal(Modal, title="🔍 Recherche Marauder"):
         )
         
         status, data = await brix_search(payload)
-        
         use_search(uid)
         
         if status != 200:
-            return await loading.edit(
-                embed=discord.Embed(title=f"❌ Erreur API {status}", color=0xef4444)
-            )
+            return await loading.edit(embed=discord.Embed(title=f"❌ Erreur API {status}", color=0xef4444))
         
         results = data.get("data", {}).get("results", [])
         if not results:
-            return await loading.edit(
-                embed=discord.Embed(title="😶 Aucun résultat", color=0xf59e0b)
-            )
+            return await loading.edit(embed=discord.Embed(title="😶 Aucun résultat", color=0xf59e0b))
         
         await loading.delete()
         view = ResultsView(results, len(results), 0, " · ".join(query_parts))
@@ -299,26 +342,88 @@ class LookupModal(Modal, title="⚡ Lookup rapide"):
         )
         
         status, data = await brix_lookup(str(self.value).strip())
-        
         use_search(uid)
         
         if status != 200:
-            return await loading.edit(
-                embed=discord.Embed(title=f"❌ Erreur API {status}", color=0xef4444)
-            )
+            return await loading.edit(embed=discord.Embed(title=f"❌ Erreur API {status}", color=0xef4444))
         
         results = data.get("data", {}).get("results", [])
         if not results:
-            return await loading.edit(
-                embed=discord.Embed(title="😶 Aucun résultat", color=0xf59e0b)
-            )
+            return await loading.edit(embed=discord.Embed(title="😶 Aucun résultat", color=0xf59e0b))
         
         await loading.delete()
         view = ResultsView(results, len(results), 0, str(self.value).strip())
         await interaction.followup.send(embed=view.current_embed(), view=view, ephemeral=True)
 
 # ============================================
-# MAIN VIEW (PERSISTANTE AVEC timeout=None)
+# MODAL PLAQUE (RECHERCHE PAR IMMATRICULATION)
+# ============================================
+
+class PlaqueModal(Modal, title="🚗 Recherche par plaque"):
+    plaque = TextInput(
+        label="Numéro de plaque",
+        placeholder="AB-123-CD ou FH034DD",
+        required=True,
+        max_length=15
+    )
+
+    async def on_submit(self, interaction: discord.Interaction):
+        await interaction.response.defer(ephemeral=True)
+        
+        plate = str(self.plaque).strip().upper().replace(" ", "").replace("-", "")
+        
+        if not AUTO_WAYS_KEY:
+            return await interaction.followup.send(
+                embed=discord.Embed(title="❌ Clé API Auto Ways manquante", color=0xef4444),
+                ephemeral=True
+            )
+        
+        loading = await interaction.followup.send(
+            embed=discord.Embed(title="⏳ Recherche du véhicule...", color=PANEL_COLOR),
+            ephemeral=True
+        )
+        
+        status, data = await get_car_info(plate)
+        
+        if status == 404:
+            return await loading.edit(
+                embed=discord.Embed(
+                    title=f"❌ Aucun véhicule trouvé",
+                    description=f"Plaque **{plate}** non trouvée dans la base SIV.",
+                    color=0xef4444
+                )
+            )
+        elif status == 401:
+            return await loading.edit(
+                embed=discord.Embed(
+                    title="❌ Clé API invalide",
+                    description="Vérifie ta clé Auto Ways Network.",
+                    color=0xef4444
+                )
+            )
+        elif status != 200:
+            return await loading.edit(
+                embed=discord.Embed(
+                    title=f"❌ Erreur {status}",
+                    description="Une erreur est survenue, réessaie plus tard.",
+                    color=0xef4444
+                )
+            )
+        
+        if not data:
+            return await loading.edit(
+                embed=discord.Embed(
+                    title="❌ Données vides",
+                    description="Aucune donnée reçue pour cette plaque.",
+                    color=0xef4444
+                )
+            )
+        
+        embed = format_car_embed(data, plate)
+        await loading.edit(embed=embed, view=None)
+
+# ============================================
+# MAIN VIEW (PANEL)
 # ============================================
 
 class MainView(View):
@@ -328,13 +433,13 @@ class MainView(View):
             label="🌐 Site Web",
             style=discord.ButtonStyle.link,
             url=API_URL,
-            row=1
+            row=2
         ))
         self.add_item(Button(
             label="💬 Discord",
             style=discord.ButtonStyle.link,
             url="https://discord.gg/jf6QRZHaTB",
-            row=1
+            row=2
         ))
 
     @discord.ui.button(label="🔍 Rechercher", style=discord.ButtonStyle.primary, row=0, custom_id="main_search")
@@ -344,6 +449,10 @@ class MainView(View):
     @discord.ui.button(label="⚡ Lookup rapide", style=discord.ButtonStyle.secondary, row=0, custom_id="main_lookup")
     async def lookup(self, interaction, button):
         await interaction.response.send_modal(LookupModal())
+
+    @discord.ui.button(label="🚗 Plaque", style=discord.ButtonStyle.success, row=0, custom_id="main_plaque")
+    async def plaque(self, interaction, button):
+        await interaction.response.send_modal(PlaqueModal())
 
 # ============================================
 # MODAL TICKET
@@ -407,7 +516,7 @@ class TicketModal(Modal, title="🎫 Nouveau ticket"):
         )
 
 # ============================================
-# TICKET VIEW (PERSISTANTE)
+# TICKET VIEW
 # ============================================
 
 class TicketView(View):
@@ -419,7 +528,7 @@ class TicketView(View):
         await interaction.response.send_modal(TicketModal())
 
 # ============================================
-# CLOSE TICKET VIEW (PERSISTANTE)
+# CLOSE TICKET VIEW
 # ============================================
 
 class CloseTicketView(View):
@@ -453,7 +562,7 @@ class CloseTicketView(View):
         await interaction.channel.delete()
 
 # ============================================
-# RÈGLEMENT (PERSISTANTE)
+# RÈGLEMENT
 # ============================================
 
 class RulesView(View):
@@ -536,11 +645,16 @@ async def reset_stats(interaction: discord.Interaction):
 # COMMANDE /PANEL
 # ============================================
 
-@bot.tree.command(name="panel", description="Afficher le panel Marauder")
+@bot.tree.command(name="panel", description="📊 Afficher le panel Marauder")
 async def panel(interaction):
     embed = discord.Embed(
         title="**Marauder Lookup**",
-        description="🔍 **Recherche OSINT**\n⚡ **Lookup rapide**\n\n💬 **Rejoins notre Discord :** [Clique ici](https://discord.gg/jf6QRZHaTB)",
+        description=(
+            "🔍 **Recherche OSINT**\n"
+            "⚡ **Lookup rapide**\n"
+            "🚗 **Recherche par plaque**\n\n"
+            "💬 **Rejoins notre Discord :** [Clique ici](https://discord.gg/jf6QRZHaTB)"
+        ),
         color=PANEL_COLOR
     )
     embed.set_image(url="https://cdn.discordapp.com/attachments/1477415267452719208/1529531032720904202/image.png")
@@ -551,7 +665,7 @@ async def panel(interaction):
 # COMMANDE /TICKET
 # ============================================
 
-@bot.tree.command(name="ticket", description="Envoyer le panel de tickets")
+@bot.tree.command(name="ticket", description="🎫 Envoyer le panel de tickets")
 async def ticket_panel(interaction):
     if not has_permission(interaction):
         return await interaction.response.send_message("❌ Permission refusée.", ephemeral=True)
@@ -575,7 +689,7 @@ async def ticket_panel(interaction):
 # COMMANDE /REGLEMENT
 # ============================================
 
-@bot.tree.command(name="reglement", description="Envoyer le règlement")
+@bot.tree.command(name="reglement", description="📜 Envoyer le règlement")
 async def reglement(interaction):
     if not has_owner_role(interaction):
         return await interaction.response.send_message("❌ Permission refusée.", ephemeral=True)
@@ -608,7 +722,7 @@ async def reglement(interaction):
 # COMMANDE /ADD
 # ============================================
 
-@bot.tree.command(name="add", description="Ajouter une personne au ticket")
+@bot.tree.command(name="add", description="➕ Ajouter une personne au ticket")
 async def add_to_ticket(interaction, membre: discord.Member):
     if not has_permission(interaction):
         return await interaction.response.send_message("❌ Permission refusée.", ephemeral=True)
@@ -622,7 +736,7 @@ async def add_to_ticket(interaction, membre: discord.Member):
 # COMMANDE /REMOVE
 # ============================================
 
-@bot.tree.command(name="remove", description="Retirer une personne du ticket")
+@bot.tree.command(name="remove", description="➖ Retirer une personne du ticket")
 async def remove_from_ticket(interaction, membre: discord.Member):
     if not has_permission(interaction):
         return await interaction.response.send_message("❌ Permission refusée.", ephemeral=True)
@@ -633,12 +747,64 @@ async def remove_from_ticket(interaction, membre: discord.Member):
     await interaction.response.send_message(f"✅ {membre.mention} retiré du ticket.")
 
 # ============================================
+# COMMANDE /PLAQUE (SLASH)
+# ============================================
+
+@bot.tree.command(name="plaque", description="🚗 Rechercher un véhicule par plaque d'immatriculation")
+async def plaque_slash(interaction: discord.Interaction, numero: str):
+    """Recherche directe par plaque"""
+    await interaction.response.defer(ephemeral=True)
+    
+    plate = numero.strip().upper().replace(" ", "").replace("-", "")
+    
+    if not AUTO_WAYS_KEY:
+        return await interaction.followup.send(
+            embed=discord.Embed(title="❌ Clé API Auto Ways manquante", color=0xef4444),
+            ephemeral=True
+        )
+    
+    loading = await interaction.followup.send(
+        embed=discord.Embed(title="⏳ Recherche du véhicule...", color=PANEL_COLOR),
+        ephemeral=True
+    )
+    
+    status, data = await get_car_info(plate)
+    
+    if status == 404:
+        return await loading.edit(
+            embed=discord.Embed(
+                title=f"❌ Aucun véhicule trouvé",
+                description=f"Plaque **{plate}** non trouvée.",
+                color=0xef4444
+            )
+        )
+    elif status == 401:
+        return await loading.edit(
+            embed=discord.Embed(title="❌ Clé API invalide", color=0xef4444)
+        )
+    elif status != 200:
+        return await loading.edit(
+            embed=discord.Embed(
+                title=f"❌ Erreur {status}",
+                description="Réessaie plus tard.",
+                color=0xef4444
+            )
+        )
+    
+    if not data:
+        return await loading.edit(
+            embed=discord.Embed(title="❌ Données vides", color=0xef4444)
+        )
+    
+    embed = format_car_embed(data, plate)
+    await loading.edit(embed=embed, view=None)
+
+# ============================================
 # ÉVÉNEMENTS
 # ============================================
 
 @bot.event
 async def on_ready():
-    # Ajouter toutes les views persistantes
     bot.add_view(MainView())
     bot.add_view(TicketView())
     bot.add_view(CloseTicketView())
@@ -654,6 +820,7 @@ async def on_ready():
     print(f"✅ Rôle Staff: {STAFF_ROLE_ID}")
     print(f"✅ Rôle Owner: {OWNER_ROLE_ID}")
     print(f"✅ Rôle Membre: {MEMBER_ROLE_ID}")
+    print(f"✅ Auto Ways: {'✅ OK' if AUTO_WAYS_KEY else '❌ MANQUANT'}")
 
 # ============================================
 # LANCEMENT
