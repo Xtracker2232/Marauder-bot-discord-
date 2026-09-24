@@ -13,7 +13,7 @@ import asyncio
 TOKEN = os.getenv('DISCORD_TOKEN')
 BRIX_KEY = os.getenv('BRIX_KEY')
 API_URL = os.getenv('API_URL', "https://marauder.host")
-BRIX_API_URL = os.getenv('BRIX_API_URL', "https://api.brixhub.ru/api/v1")
+BRIX_API_URL = os.getenv('BRIX_API_URL', "https://api.brixhub.to/api/v1")
 
 TICKET_CHANNEL_ID = int(os.getenv('TICKET_CHANNEL_ID', 0))
 RULES_CHANNEL_ID = int(os.getenv('RULES_CHANNEL_ID', 0))
